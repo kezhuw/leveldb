@@ -31,7 +31,7 @@ func (db *DB) finalize() error {
 // ongoing accesses and outstanding iterators. All operations after this
 // call will get error ErrDBClosed. A judicious caller should call this
 // function after all ongoing accesses is done and all outstanding iterators
-// is closed, and should not call any functions of this db instance after
+// is releases, and should not call any functions of this db instance after
 // it is closed.
 func (db *DB) Close() error {
 	return db.finalize()
