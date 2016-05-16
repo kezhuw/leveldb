@@ -72,7 +72,7 @@ func (v *Version) String() string {
 			s += fmt.Sprintf("level %d contains 0 files.\n", level)
 			continue
 		}
-		s += fmt.Sprintf("level %d contains %d files:\n", level)
+		s += fmt.Sprintf("level %d contains %d files:\n", level, len(files))
 		for _, f := range files {
 			s += fmt.Sprintf("file %d: size %d, smallest key: %q, largest key: %q\n", f.Number, f.Size, f.Smallest, f.Largest)
 		}
