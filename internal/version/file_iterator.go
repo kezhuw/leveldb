@@ -50,7 +50,7 @@ func (it *fileIterator) Prev() bool {
 
 func (it *fileIterator) Seek(ikey []byte) bool {
 	it.open = true
-	it.index = sort.Search(len(it.files), func(i int) bool { return it.icmp.Compare(ikey, it.files[i].Largest) < 0 })
+	it.index = sort.Search(len(it.files), func(i int) bool { return it.icmp.Compare(ikey, it.files[i].Largest) <= 0 })
 	return it.Valid()
 }
 
