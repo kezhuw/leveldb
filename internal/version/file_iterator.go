@@ -87,14 +87,6 @@ func (it *fileIterator) Release() error {
 	return nil
 }
 
-func newFileIterator(files []FileMeta, icmp keys.Comparator) iterator.Iterator {
-	n := len(files)
-	if n == 0 {
-		return iterator.Empty()
-	}
-	return &fileIterator{icmp: icmp, files: files}
-}
-
 func newSortedFileIterator(icmp keys.Comparator, files []FileMeta, cache *table.Cache, opts *options.ReadOptions) iterator.Iterator {
 	n := len(files)
 	if n == 0 {

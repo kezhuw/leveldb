@@ -6,7 +6,6 @@ import (
 	"sync/atomic"
 
 	"github.com/kezhuw/leveldb/internal/configs"
-	"github.com/kezhuw/leveldb/internal/endian"
 	"github.com/kezhuw/leveldb/internal/errors"
 	"github.com/kezhuw/leveldb/internal/iterator"
 	"github.com/kezhuw/leveldb/internal/keys"
@@ -114,13 +113,7 @@ func (v *Version) AppendIterators(iters []iterator.Iterator, opts *options.ReadO
 		if len(files) == 0 {
 			continue
 		}
-		index := newFileIterator(files, v.icmp)
-		blockf := func(value []byte) iterator.Iterator {
-			fileNumber := endian.Uint64(value[:8])
-			fileSize := endian.Uint64(value[8:])
-			return v.cache.NewIterator(fileNumber, fileSize, opts)
-		}
-		iters = append(iters, iterator.NewIndexIterator(index, blockf))
+		iters = append(iters, newSortedFileIterator(v.icmp, files, v.cache, opts))
 	}
 	return iters
 }
