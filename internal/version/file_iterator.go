@@ -79,9 +79,11 @@ func (it *fileIterator) Err() error {
 }
 
 func (it *fileIterator) Release() error {
-	it.index = 0
+	it.opts = nil
 	it.icmp = nil
 	it.files = nil
+	it.index = 0
+	it.cache = nil
 	return nil
 }
 
