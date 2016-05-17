@@ -207,13 +207,13 @@ func (db *DB) recoverLogs(logs []uint64) error {
 		db.logNumber = logNumber
 		return nil
 	}
-	var mem0 *memtable.MemTable
+	var imm *memtable.MemTable
 	maxSequence := db.state.LastSequence()
 	if n != 1 {
 		sort.Sort(byFileNumber(logs))
-		mem0 = memtable.New(db.options.Comparator)
+		imm = memtable.New(db.options.Comparator)
 		for _, logNumber := range logs[:n-1] {
-			logFile, _, err := db.loadLog(mem0, logNumber, os.O_RDONLY, &maxSequence)
+			logFile, _, err := db.loadLog(imm, logNumber, os.O_RDONLY, &maxSequence)
 			if err != nil {
 				return err
 			}
@@ -227,24 +227,12 @@ func (db *DB) recoverLogs(logs []uint64) error {
 		return err
 	}
 	db.mem = mem
+	db.imm = imm
 	db.log = log.NewWriter(logFile, offset)
 	db.logFile = logFile
 	db.logNumber = logNumber
 	db.state.SetLastSequence(maxSequence)
 	db.state.MarkFileNumberUsed(logNumber)
-	if mem0 != nil {
-		fileNumber := db.state.NewFileNumber()
-		var edit version.Edit
-		edit.LastSequence = maxSequence
-		edit.LogNumber = logNumber
-		edit.NextFileNumber = db.state.NextFileNumber()
-		c := compact.NewMemTableCompaction(db.name, maxSequence, fileNumber, -1, mem0, db.state.Current(), db.options)
-		err := c.Compact(&edit)
-		if err != nil {
-			return err
-		}
-		db.state.Apply(&edit)
-	}
 	return nil
 }
 
