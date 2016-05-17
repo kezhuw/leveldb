@@ -20,17 +20,17 @@ type FileMeta struct {
 	Largest  keys.InternalKey
 }
 
-type byFileMetaNumber []FileMeta
+type byNewestFileMeta []FileMeta
 
-func (files byFileMetaNumber) Len() int {
+func (files byNewestFileMeta) Len() int {
 	return len(files)
 }
 
-func (files byFileMetaNumber) Less(i, j int) bool {
+func (files byNewestFileMeta) Less(i, j int) bool {
 	return files[i].Number > files[j].Number
 }
 
-func (files byFileMetaNumber) Swap(i, j int) {
+func (files byNewestFileMeta) Swap(i, j int) {
 	files[i], files[j] = files[j], files[i]
 }
 
@@ -88,7 +88,7 @@ func (v *Version) String() string {
 }
 
 func (v *Version) SortFiles() error {
-	sort.Sort(byFileMetaNumber(v.Levels[0]))
+	sort.Sort(byNewestFileMeta(v.Levels[0]))
 	var byKeys byFileKey
 	byKeys.cmp = v.icmp
 	for level := 1; level < configs.NumberLevels; level++ {
