@@ -72,6 +72,9 @@ func (edit *Edit) String() string {
 	if edit.LogNumber != 0 {
 		s += fmt.Sprintf("LogNumber: %d\n", edit.LogNumber)
 	}
+	if edit.NextFileNumber != 0 {
+		s += fmt.Sprintf("NextFileNumber: %d\n", edit.NextFileNumber)
+	}
 	if edit.LastSequence != 0 {
 		s += fmt.Sprintf("LastSequence: %d\n", edit.LastSequence)
 	}
