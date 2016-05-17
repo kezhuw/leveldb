@@ -29,10 +29,10 @@ type State struct {
 	nextFileNumber uint64
 
 	manifestMu             sync.Mutex
-	manifestBig            bool
 	manifestLog            *log.Writer
 	manifestFile           file.File
 	manifestNumber         uint64
+	manifestVersion        *Version
 	manifestNextNumber     uint64
 	manifestLastSequence   keys.Sequence
 	manifestLogFileNumber  uint64
@@ -99,57 +99,40 @@ func (s *State) AddLiveTables(tables map[uint64]struct{}) {
 	}
 }
 
-func (s *State) tryResetCurrentManifest() {
-	if !s.manifestBig {
-		return
+func (s *State) resetCurrentManifest(snapshot *Edit) error {
+	if s.manifestNextNumber == 0 {
+		s.manifestNextNumber, s.manifestNextFileNumber = s.NewFileNumber()
+		snapshot.NextFileNumber = s.manifestNextFileNumber
 	}
 	manifestNumber := s.manifestNextNumber
-	if manifestNumber == 0 {
-		manifestNumber, _ = s.NewFileNumber()
-		s.manifestNextNumber = manifestNumber
-	}
+
 	manifestName := files.ManifestFileName(s.dbname, manifestNumber)
-	manifestFile, err := s.fs.Open(manifestName, os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_TRUNC)
+	manifestFile, err := s.fs.Open(manifestName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
 	if err != nil {
-		return
+		return err
 	}
+
 	manifestLog := log.NewWriter(manifestFile, 0)
-	err = s.writeSnapshot(manifestLog, manifestFile)
+	err = s.writeEdit(manifestLog, manifestFile, snapshot)
 	if err != nil {
 		manifestFile.Close()
 		s.fs.Remove(manifestName)
-		return
+		return err
 	}
+
 	err = files.SetCurrentManifest(s.fs, s.dbname, s.currentName, manifestNumber)
 	if err != nil {
 		manifestFile.Close()
 		s.fs.Remove(manifestName)
-		return
+		return err
 	}
+
 	s.manifestFile.Close()
-	s.manifestBig = false
 	s.manifestNextNumber = 0
 	s.manifestLog = manifestLog
 	s.manifestFile = manifestFile
 	s.manifestNumber = manifestNumber
-}
-
-func (s *State) writeSnapshot(log *log.Writer, file file.File) error {
-	var edit Edit
-	edit.ComparatorName = s.options.Comparator.UserKeyComparator.Name()
-	edit.LogNumber = s.logFileNumber
-	edit.NextFileNumber = s.nextFileNumber
-	edit.LastSequence = s.lastSequence
-	v := s.current
-	for level := 0; level < configs.NumberLevels; level++ {
-		if len(v.CompactionPointers[level]) != 0 {
-			edit.CompactPointers = append(edit.CompactPointers, LevelCompactPointer{Level: level, Largest: v.CompactionPointers[level]})
-		}
-		for _, f := range v.Levels[level] {
-			edit.AddedFiles = append(edit.AddedFiles, LevelFileMeta{Level: level, FileMeta: f})
-		}
-	}
-	return s.writeEdit(log, file, &edit)
+	return nil
 }
 
 func (s *State) writeEdit(log *log.Writer, file file.File, edit *Edit) error {
@@ -187,7 +170,12 @@ func (s *State) installCurrent(v *Version) {
 func (s *State) Log(edit *Edit) error {
 	s.manifestMu.Lock()
 	defer s.manifestMu.Unlock()
-	s.tryResetCurrentManifest()
+
+	v, err := s.manifestVersion.edit(edit)
+	if err != nil {
+		panic(fmt.Errorf("%s:\nversion:\n%s\n\nedit:%s\n\n", err, s.manifestVersion, edit))
+	}
+
 	if edit.LastSequence < s.manifestLastSequence {
 		edit.LastSequence = s.manifestLastSequence
 	}
@@ -197,12 +185,31 @@ func (s *State) Log(edit *Edit) error {
 	if edit.NextFileNumber < s.manifestNextFileNumber {
 		edit.NextFileNumber = s.manifestNextFileNumber
 	}
-	err := s.writeEdit(s.manifestLog, s.manifestFile, edit)
-	if err == nil {
-		s.manifestLastSequence = edit.LastSequence
-		s.manifestLogFileNumber = edit.LogNumber
-		s.manifestNextFileNumber = edit.NextFileNumber
+
+	switch {
+	case s.manifestLog.Offset() >= configs.TargetFileSize:
+		var snapshot Edit
+		v.snapshot(&snapshot)
+		snapshot.ComparatorName = s.options.Comparator.UserKeyComparator.Name()
+		snapshot.LogNumber = edit.LogNumber
+		snapshot.LastSequence = edit.LastSequence
+		snapshot.NextFileNumber = edit.NextFileNumber
+		err := s.resetCurrentManifest(&snapshot)
+		edit.NextFileNumber = snapshot.NextFileNumber
+		if err == nil {
+			break
+		}
+		fallthrough
+	default:
+		err := s.writeEdit(s.manifestLog, s.manifestFile, edit)
+		if err != nil {
+			return err
+		}
 	}
+	s.manifestVersion = v
+	s.manifestLastSequence = edit.LastSequence
+	s.manifestLogFileNumber = edit.LogNumber
+	s.manifestNextFileNumber = edit.NextFileNumber
 	return err
 }
 
@@ -274,20 +281,22 @@ func Create(dbname string, opts *options.Options) (state *State, err error) {
 	cache := table.NewCache(dbname, opts)
 	current := &Version{refs: 1, icmp: opts.Comparator, cache: cache}
 	return &State{
-		dbname:         dbname,
-		currentName:    currentName,
-		fs:             fs,
-		options:        opts,
-		lastSequence:   edit.LastSequence,
-		logFileNumber:  edit.LogNumber,
-		nextFileNumber: edit.NextFileNumber,
-		manifestLog:    manifestLog,
-		manifestFile:   manifestFile,
-		manifestNumber: manifestNumber,
-		current:        current,
-		versions:       map[*Version]struct{}{current: struct{}{}},
-		scratch:        record,
-		tableCache:     cache,
+		dbname:                dbname,
+		currentName:           currentName,
+		fs:                    fs,
+		options:               opts,
+		lastSequence:          edit.LastSequence,
+		logFileNumber:         edit.LogNumber,
+		nextFileNumber:        edit.NextFileNumber,
+		manifestLog:           manifestLog,
+		manifestFile:          manifestFile,
+		manifestNumber:        manifestNumber,
+		manifestVersion:       current,
+		manifestLogFileNumber: edit.LogNumber,
+		current:               current,
+		versions:              map[*Version]struct{}{current: struct{}{}},
+		scratch:               record,
+		tableCache:            cache,
 	}, nil
 }
 
@@ -324,26 +333,24 @@ func Recover(dbname string, opts *options.Options) (state *State, err error) {
 	cache := table.NewCache(dbname, opts)
 	current.cache = cache
 	state = &State{
-		dbname:         dbname,
-		currentName:    currentName,
-		fs:             fs,
-		options:        opts,
-		lastSequence:   builder.LastSequence,
-		logFileNumber:  builder.LogNumber,
-		nextFileNumber: builder.NextFileNumber,
-		manifestLog:    log.NewWriter(manifestFile, offset),
-		manifestFile:   manifestFile,
-		manifestNumber: manifestNumber,
-		current:        current,
-		versions:       map[*Version]struct{}{current: struct{}{}},
-		scratch:        builder.Scratch,
-		tableCache:     cache,
+		dbname:                dbname,
+		currentName:           currentName,
+		fs:                    fs,
+		options:               opts,
+		lastSequence:          builder.LastSequence,
+		logFileNumber:         builder.LogNumber,
+		nextFileNumber:        builder.NextFileNumber,
+		manifestLog:           log.NewWriter(manifestFile, offset),
+		manifestFile:          manifestFile,
+		manifestNumber:        manifestNumber,
+		manifestLogFileNumber: builder.LogNumber,
+		manifestVersion:       current,
+		current:               current,
+		versions:              map[*Version]struct{}{current: struct{}{}},
+		scratch:               builder.Scratch,
+		tableCache:            cache,
 	}
 	state.MarkFileNumberUsed(state.logFileNumber)
-
-	if offset >= 2*1024*1024 {
-		state.manifestBig = true
-	}
 
 	return state, nil
 }

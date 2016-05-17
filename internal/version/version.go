@@ -443,6 +443,17 @@ func (v *Version) edit(edit *Edit) (*Version, error) {
 	return v1, nil
 }
 
+func (v *Version) snapshot(edit *Edit) {
+	for level := 0; level < configs.NumberLevels; level++ {
+		if len(v.CompactionPointers[level]) != 0 {
+			edit.CompactPointers = append(edit.CompactPointers, LevelCompactPointer{Level: level, Largest: v.CompactionPointers[level]})
+		}
+		for _, f := range v.Levels[level] {
+			edit.AddedFiles = append(edit.AddedFiles, LevelFileMeta{Level: level, FileMeta: f})
+		}
+	}
+}
+
 func (v *Version) dup() *Version {
 	dup := &Version{icmp: v.icmp, cache: v.cache}
 	for level := 0; level < configs.NumberLevels; level++ {
