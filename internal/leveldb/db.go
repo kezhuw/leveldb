@@ -180,17 +180,17 @@ func (db *DB) loadLog(mem *memtable.MemTable, logNumber uint64, flag int, maxSeq
 	}
 }
 
-type byFileNumber []uint64
+type byOldestFileNumber []uint64
 
-func (files byFileNumber) Len() int {
+func (files byOldestFileNumber) Len() int {
 	return len(files)
 }
 
-func (files byFileNumber) Less(i, j int) bool {
+func (files byOldestFileNumber) Less(i, j int) bool {
 	return files[i] < files[j]
 }
 
-func (files byFileNumber) Swap(i, j int) {
+func (files byOldestFileNumber) Swap(i, j int) {
 	files[i], files[j] = files[j], files[i]
 }
 
@@ -210,7 +210,7 @@ func (db *DB) recoverLogs(logs []uint64) error {
 	var imm *memtable.MemTable
 	maxSequence := db.state.LastSequence()
 	if n != 1 {
-		sort.Sort(byFileNumber(logs))
+		sort.Sort(byOldestFileNumber(logs))
 		imm = memtable.New(db.options.Comparator)
 		for _, logNumber := range logs[:n-1] {
 			logFile, _, err := db.loadLog(imm, logNumber, os.O_RDONLY, &maxSequence)
