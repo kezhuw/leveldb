@@ -233,6 +233,11 @@ func (c *levelCompaction) compact() error {
 		}
 		lastSequence = currentSequence
 	}
+
+	if err := c.closeCurrentTable(); err != nil {
+		return err
+	}
+
 	return it.Err()
 }
 
