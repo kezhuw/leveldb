@@ -61,18 +61,20 @@ func (s *State) SetLastSequence(seq keys.Sequence) {
 	s.lastSequence = seq
 }
 
-func (s *State) NextFileNumber() uint64 {
-	return atomic.LoadUint64(&s.nextFileNumber)
-}
-
 // ManifestFileNumber returns current manifest number, possibly expired
 // due to switching to new manifest file.
 func (s *State) ManifestFileNumber() uint64 {
 	return s.manifestNumber
 }
 
-func (s *State) NewFileNumber() uint64 {
-	return atomic.AddUint64(&s.nextFileNumber, 1) - 1
+// NewFileNumber returns a new file number and a next file number.
+func (s *State) NewFileNumber() (uint64, uint64) {
+	next := atomic.AddUint64(&s.nextFileNumber, 1)
+	return next - 1, next
+}
+
+func (s *State) NextFileNumber() uint64 {
+	return atomic.LoadUint64(&s.nextFileNumber)
 }
 
 func (s *State) ReuseFileNumber(number uint64) {
@@ -103,7 +105,7 @@ func (s *State) tryResetCurrentManifest() {
 	}
 	manifestNumber := s.manifestNextNumber
 	if manifestNumber == 0 {
-		manifestNumber = s.NewFileNumber()
+		manifestNumber, _ = s.NewFileNumber()
 		s.manifestNextNumber = manifestNumber
 	}
 	manifestName := files.ManifestFileName(s.dbname, manifestNumber)
@@ -181,6 +183,7 @@ func (s *State) installCurrent(v *Version) {
 	s.ReleaseVersion(v)
 }
 
+// Log writes edit to manifest file.
 func (s *State) Log(edit *Edit) error {
 	s.manifestMu.Lock()
 	defer s.manifestMu.Unlock()

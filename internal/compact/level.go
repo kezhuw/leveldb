@@ -52,6 +52,7 @@ type levelCompaction struct {
 
 	fileNumbers    []uint64
 	fileNumbersOff int
+	nextFileNumber uint64
 
 	grandparentsIndex           int
 	grandparentsSeenKey         bool
@@ -132,7 +133,8 @@ func (c *levelCompaction) newFileNumber() uint64 {
 		c.fileNumbersOff++
 		return x
 	}
-	fileNumber := c.state.NewFileNumber()
+	var fileNumber uint64
+	fileNumber, c.nextFileNumber = c.state.NewFileNumber()
 	c.fileNumbers = append(c.fileNumbers, fileNumber)
 	c.fileNumbersOff = len(c.fileNumbers)
 	return fileNumber
@@ -253,6 +255,9 @@ func (c *levelCompaction) record(edit *version.Edit) {
 		edit.AddedFiles = append(edit.AddedFiles, version.LevelFileMeta{Level: level + 1, FileMeta: f})
 	}
 	edit.CompactPointers = append(edit.CompactPointers, version.LevelCompactPointer{Level: level, Largest: c.NextCompactPointer})
+	if c.nextFileNumber > edit.NextFileNumber {
+		edit.NextFileNumber = c.nextFileNumber
+	}
 }
 
 func (c *levelCompaction) Compact(edit *version.Edit) error {

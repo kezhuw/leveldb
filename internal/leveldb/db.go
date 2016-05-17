@@ -130,7 +130,7 @@ func Open(dbname string, opts *options.Options) (db *DB, err error) {
 }
 
 func (db *DB) newLogFile() (file.File, uint64, error) {
-	logNumber := db.state.NewFileNumber()
+	logNumber, _ := db.state.NewFileNumber()
 	logName := files.LogFileName(db.name, logNumber)
 	logFile, err := db.fs.Open(logName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
 	if err != nil {
@@ -379,10 +379,11 @@ func (db *DB) tryMemoryCompaction() {
 	}
 	db.compactionMemory = true
 	s := db.state
-	c := compact.NewMemTableCompaction(db.name, db.getSmallestSnapshot(), s.NewFileNumber(), db.compactionLevel, db.imm, s.Current(), db.options)
+	fileNumber, nextFileNumber := s.NewFileNumber()
+	c := compact.NewMemTableCompaction(db.name, db.getSmallestSnapshot(), fileNumber, db.compactionLevel, db.imm, s.Current(), db.options)
 	var edit version.Edit
 	edit.LogNumber = db.logNumber
-	edit.NextFileNumber = s.NextFileNumber()
+	edit.NextFileNumber = nextFileNumber
 	edit.LastSequence = s.LastSequence()
 	db.bgGroup.Add(1)
 	go db.compactAndLog(c, &edit)
@@ -390,7 +391,7 @@ func (db *DB) tryMemoryCompaction() {
 
 func (db *DB) tryOpenNextLog() {
 	if db.imm == nil && db.nextLogNumber == 0 {
-		db.nextLogNumber = db.state.NewFileNumber()
+		db.nextLogNumber, _ = db.state.NewFileNumber()
 		db.bgGroup.Add(1)
 		go db.openNextLog()
 	}
@@ -742,7 +743,7 @@ func createDB(dbname string, locker io.Closer, opts *options.Options) (*DB, erro
 	if err != nil {
 		return nil, err
 	}
-	logNumber := state.NewFileNumber()
+	logNumber, _ := state.NewFileNumber()
 	logName := files.LogFileName(dbname, logNumber)
 	logFile, err := opts.FileSystem.Open(logName, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
 	if err != nil {
