@@ -278,6 +278,15 @@ func (db *DB) compactAndLog(c compact.Compactor, edit *version.Edit) {
 	}
 }
 
+func (db *DB) applyCompaction(level int, edit *version.Edit) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	db.state.Apply(edit)
+	if level == -1 {
+		db.imm = nil
+	}
+}
+
 func (db *DB) completeCompaction(level int, err error, edit *version.Edit, aborted bool) {
 	if err == nil || aborted {
 		defer db.bgGroup.Done()
@@ -292,10 +301,7 @@ func (db *DB) completeCompaction(level int, err error, edit *version.Edit, abort
 	if err != nil {
 		return
 	}
-	if level == -1 {
-		db.imm = nil
-	}
-	db.state.Apply(edit)
+	db.applyCompaction(level, edit)
 	db.tryLevelCompaction()
 	db.tryRemoveObsoleteFiles()
 }
@@ -445,6 +451,18 @@ func (db *DB) getSmallestSnapshot() keys.Sequence {
 	return db.snapshots.Oldest()
 }
 
+func (db *DB) switchMemTable() {
+	if db.mem.Empty() {
+		return
+	}
+	mem := memtable.New(db.options.Comparator)
+	db.mu.Lock()
+	db.imm = db.mem
+	db.mem = mem
+	db.mu.Unlock()
+	db.tryMemoryCompaction()
+}
+
 func (db *DB) openLog(f file.File, number uint64) {
 	db.log = log.NewWriter(f, 0)
 	db.logErr = nil
@@ -453,11 +471,7 @@ func (db *DB) openLog(f file.File, number uint64) {
 	}
 	db.logFile = f
 	db.logNumber = number
-	if !db.mem.Empty() {
-		db.imm = db.mem
-		db.mem = memtable.New(db.options.Comparator)
-		db.tryMemoryCompaction()
-	}
+	db.switchMemTable()
 }
 
 func (db *DB) closeLog(err error) {
@@ -514,6 +528,10 @@ func (db *DB) writeBatchGroup(writes *batch.Group) {
 		batch := writes.Batch
 		lastSequence := db.state.LastSequence()
 		batch.SetSequence(lastSequence + 1)
+		// Setting last sequence happens before sending reply, which
+		// happens before completion of receiving. Readers will observe
+		// the new last sequence eventually. So we don't do any
+		// sychronization here.
 		db.state.SetLastSequence(lastSequence.Add(uint64(batch.Count())))
 		err := db.writeLog(writes.Sync, batch.Bytes())
 		if err != nil {
