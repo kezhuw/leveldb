@@ -140,6 +140,11 @@ func (b *Batch) Bytes() []byte {
 	return b.data
 }
 
+func (b *Batch) Pin() {
+	n := len(b.data)
+	b.data = b.data[:n:n]
+}
+
 func (b *Batch) Size() int {
 	return len(b.data)
 }

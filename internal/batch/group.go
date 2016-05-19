@@ -1,28 +1,31 @@
 package batch
 
+type Request struct {
+	Sync  bool
+	Batch Batch
+	Reply chan error
+}
+
 type Group struct {
-	Sync          bool
-	Batch         *Batch
-	replys        []chan error
-	first         Batch
-	fixed         Batch
-	pendingSync   bool
-	pendingBatch  []byte
-	pendingReplyc chan error
-	batchSize     int
-	maxBatchSize  int
+	Head         Request
+	pending      Request
+	replys       []chan error
+	batchSize    int
+	maxBatchSize int
 }
 
 func (g *Group) Empty() bool {
-	return len(g.replys) == 0
+	return g.Head.Reply == nil
 }
 
-func (g *Group) setFirst(sync bool, batch []byte, replyc chan error) {
-	g.Sync = sync
-	g.first.Reset(batch)
-	g.replys = append(g.replys, replyc)
-	g.Batch = &g.first
-	g.batchSize = len(batch)
+func (g *Group) HasPending() bool {
+	return g.pending.Reply != nil
+}
+
+func (g *Group) setFirst(req Request) {
+	g.Head = req
+	g.Head.Batch.Pin()
+	g.batchSize = g.Head.Batch.Size()
 	switch {
 	case g.batchSize <= (128 << 10):
 		g.maxBatchSize = g.batchSize + (128 << 10)
@@ -31,44 +34,67 @@ func (g *Group) setFirst(sync bool, batch []byte, replyc chan error) {
 	}
 }
 
-func (g *Group) HasPending() bool {
-	return g.pendingReplyc != nil
-}
-
-func (g *Group) Push(sync bool, batch []byte, replyc chan error) {
+func (g *Group) Push(req Request) {
 	switch {
-	case len(g.replys) == 0:
-		g.setFirst(sync, batch, replyc)
-	case !g.Sync && sync:
+	case g.HasPending():
+		panic("leveldb: pending in batch group")
+	case g.Empty():
+		g.setFirst(req)
+	case !g.Head.Sync && req.Sync:
 		fallthrough
 	case g.batchSize > g.maxBatchSize:
-		g.pendingSync = sync
-		g.pendingBatch = batch
-		g.pendingReplyc = replyc
+		g.pending = req
+	case len(g.replys) == 0:
+		g.replys = make([]chan error, 1, 2)
+		g.replys[0] = g.Head.Reply
+		g.Head.Reply = make(chan error, 1)
+		fallthrough
 	default:
-		if g.fixed.Empty() {
-			g.fixed.Append(g.first.Bytes())
-			g.Batch = &g.fixed
-		}
-		g.fixed.Append(batch)
-		g.replys = append(g.replys, replyc)
+		g.replys = append(g.replys, req.Reply)
+		g.Head.Batch.Append(req.Batch.Bytes())
+	}
+}
+
+func relay(from chan error, replys []chan error) {
+	err := <-from
+	for _, c := range replys {
+		c <- err
 	}
 }
 
 func (g *Group) Rewind() {
-	g.fixed.Clear()
-	g.first.Reset(nil)
-	g.replys = g.replys[:0]
-	if g.pendingReplyc != nil {
-		g.setFirst(g.pendingSync, g.pendingBatch, g.pendingReplyc)
-		g.pendingBatch = nil
-		g.pendingReplyc = nil
+	if g.replys != nil {
+		go relay(g.Head.Reply, g.replys)
+		g.replys = nil
+	}
+	switch {
+	case g.pending.Reply != nil:
+		g.setFirst(g.pending)
+		g.pending.Batch.Reset(nil)
+		g.pending.Reply = nil
+	default:
+		g.Head.Batch.Reset(nil)
+		g.Head.Reply = nil
 	}
 }
 
-func (g *Group) Send(err error) {
-	for i, replyc := range g.replys {
-		replyc <- err
-		g.replys[i] = nil
+func (g *Group) Close(err error) {
+	switch {
+	case g.Empty():
+		return
+	case g.replys == nil:
+		g.Head.Reply <- err
+	default:
+		for _, c := range g.replys {
+			c <- err
+		}
+		g.replys = nil
+	}
+	g.Head.Batch.Reset(nil)
+	g.Head.Reply = nil
+	if g.pending.Reply != nil {
+		g.pending.Reply <- err
+		g.pending.Batch.Reset(nil)
+		g.pending.Reply = nil
 	}
 }
