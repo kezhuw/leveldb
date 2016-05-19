@@ -564,6 +564,7 @@ func (db *DB) throttle() (chan batch.Request, <-chan time.Time) {
 	level0NumFiles := len(db.state.Current().Levels[0])
 	switch {
 	case db.log == nil:
+		db.tryOpenNextLog()
 		return db.requests, nil
 	case db.compactionErr != nil:
 		return db.requests, nil
