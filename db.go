@@ -23,8 +23,8 @@ func Open(dbname string, opts *Options) (*DB, error) {
 	return db, nil
 }
 
-func (db *DB) finalize() error {
-	return db.db.Close()
+func (db *DB) finalize() {
+	go db.db.Close()
 }
 
 // Close closes the opened LevelDB database. Make sure that there are no
@@ -34,7 +34,8 @@ func (db *DB) finalize() error {
 // is releases, and should not call any functions of this db instance after
 // it is closed.
 func (db *DB) Close() error {
-	return db.finalize()
+	runtime.SetFinalizer(db, nil)
+	return db.db.Close()
 }
 
 // Get gets value for given key. It returns ErrNotFound if db does not
