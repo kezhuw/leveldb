@@ -302,6 +302,7 @@ func (db *DB) completeCompaction(level int, err error, edit *version.Edit, abort
 }
 
 func (db *DB) completeCollectionFiles() {
+	defer db.bgGroup.Done()
 	db.collectionDone = nil
 	db.collectionFiles = false
 	db.tryMemoryCompaction()
@@ -311,7 +312,6 @@ func (db *DB) completeCollectionFiles() {
 // removeObsoleteFiles removes obsolete files in database directory. If done is not nil,
 // it will be closed after done.
 func (db *DB) removeObsoleteFiles(logNumber, manifestNumber uint64, done chan struct{}) {
-	defer db.bgGroup.Done()
 	if done != nil {
 		defer close(done)
 	}
