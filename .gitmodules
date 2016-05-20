@@ -1,6 +1,3 @@
 [submodule "github.com/golang/snappy"]
 	path = vendor/github.com/golang/snappy
 	url = https://github.com/golang/snappy.git
-[submodule "github.com/kezhuw/iobyte"]
-	path = vendor/github.com/kezhuw/iobyte
-	url = https://github.com/kezhuw/iobyte.git

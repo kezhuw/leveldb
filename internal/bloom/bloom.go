@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"io"
 
-	"github.com/kezhuw/iobyte"
 	"github.com/kezhuw/leveldb/internal/filter"
 	"github.com/kezhuw/leveldb/internal/hash"
+	"github.com/kezhuw/leveldb/internal/util"
 )
 
 const (
@@ -67,7 +67,7 @@ func (g *bloomGenerator) Append(buf *bytes.Buffer) {
 	buf.Grow(numBytes + 1)
 
 	l := buf.Len()
-	buf.ReadFrom(io.LimitReader(iobyte.ZeroReader, int64(numBytes)))
+	buf.ReadFrom(io.LimitReader(util.ZeroByteReader, int64(numBytes)))
 	k := g.k
 	data := buf.Bytes()[l : l+numBytes]
 	for i := 0; i < n; i++ {
