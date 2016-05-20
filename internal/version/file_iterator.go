@@ -11,45 +11,35 @@ import (
 )
 
 type fileIterator struct {
-	open    bool
 	icmp    keys.Comparator
-	index   int
+	opts    *options.ReadOptions
 	files   []FileMeta
 	cache   *table.Cache
-	opts    *options.ReadOptions
+	index   int
 	scratch [16]byte
 }
 
 func (it *fileIterator) First() bool {
-	it.open = true
 	it.index = 0
 	return true
 }
 
 func (it *fileIterator) Last() bool {
-	it.open = true
 	it.index = len(it.files) - 1
 	return true
 }
 
 func (it *fileIterator) Next() bool {
-	if !it.open {
-		return it.First()
-	}
 	it.index++
 	return it.Valid()
 }
 
 func (it *fileIterator) Prev() bool {
-	if !it.open {
-		return it.Last()
-	}
 	it.index--
 	return it.Valid()
 }
 
 func (it *fileIterator) Seek(ikey []byte) bool {
-	it.open = true
 	it.index = sort.Search(len(it.files), func(i int) bool { return it.icmp.Compare(ikey, it.files[i].Largest) <= 0 })
 	return it.Valid()
 }
@@ -92,6 +82,6 @@ func newSortedFileIterator(icmp keys.Comparator, files []FileMeta, cache *table.
 	if n == 0 {
 		return iterator.Empty()
 	}
-	index := &fileIterator{icmp: icmp, files: files, cache: cache, opts: opts}
+	index := &fileIterator{icmp: icmp, files: files, cache: cache, opts: opts, index: -1000}
 	return iterator.NewIndexIterator(index, index.child)
 }
