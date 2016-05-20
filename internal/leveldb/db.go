@@ -584,6 +584,7 @@ func (db *DB) throttle() (chan batch.Request, <-chan time.Time) {
 }
 
 func (db *DB) serve() {
+	go db.merge()
 mainLoop:
 	for {
 		requests, slowdown := db.throttle()
