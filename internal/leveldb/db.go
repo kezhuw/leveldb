@@ -611,6 +611,7 @@ mainLoop:
 			case req, ok := <-requests:
 				if !ok {
 					db.requests = nil
+					continue mainLoop
 				}
 				db.writeBatch(req.Sync, req.Batch, req.Reply)
 				continue mainLoop
