@@ -534,7 +534,7 @@ func (db *DB) merge() {
 	var group batch.Group
 	var requests chan batch.Request
 	requestc := db.requestc
-	defer db.bgGroup.Wait()
+	defer db.bgGroup.Done()
 	for {
 		select {
 		case <-db.bgClosing:
