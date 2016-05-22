@@ -121,7 +121,7 @@ func (r *reader) Seek(target []byte) bool {
 		if n <= 0 || shared != 0 || restart+keyEnd > sentinel {
 			panic(panicError{ErrCorruptBlock})
 		}
-		key := r.contents[restart+n : restart:keyEnd]
+		key := r.contents[restart+n : restart+keyEnd]
 		return r.comparer.Compare(key, target) > 0
 	})
 	if i != 0 {
