@@ -17,7 +17,7 @@ const (
 	DefaultWriteBufferSize      = 4 * 1024 * 1024
 	DefaultCompression          = compress.SnappyCompression
 	DefaultMaxOpenFiles         = 1000
-	DefaultBlockCacheSize       = 8 * 1024 * 1024
+	DefaultBlockCacheCapacity   = 8 * 1024 * 1024
 )
 
 var defaults = map[string]int64{
@@ -25,7 +25,7 @@ var defaults = map[string]int64{
 	"BlockRestartInterval": DefaultBlockRestartInterval,
 	"WriteBufferSize":      DefaultWriteBufferSize,
 	"MaxOpenFiles":         DefaultMaxOpenFiles,
-	"BlockCacheSize":       DefaultBlockCacheSize,
+	"BlockCacheCapacity":   DefaultBlockCacheCapacity,
 }
 
 type Options struct {
@@ -35,11 +35,11 @@ type Options struct {
 	Logger      logger.LogCloser
 	FileSystem  file.FileSystem
 
-	BlockSize            int   `default`
-	BlockRestartInterval int   `default`
-	WriteBufferSize      int   `default`
-	MaxOpenFiles         int   `default`
-	BlockCacheSize       int64 `default`
+	BlockSize            int `default`
+	BlockRestartInterval int `default`
+	WriteBufferSize      int `default`
+	MaxOpenFiles         int `default`
+	BlockCacheCapacity   int `default`
 
 	CreateIfMissing bool `default`
 	ErrorIfExists   bool `default`
@@ -92,7 +92,7 @@ var DefaultOptions = Options{
 	BlockRestartInterval: DefaultBlockRestartInterval,
 	WriteBufferSize:      DefaultWriteBufferSize,
 	MaxOpenFiles:         DefaultMaxOpenFiles,
-	BlockCacheSize:       DefaultBlockCacheSize,
+	BlockCacheCapacity:   DefaultBlockCacheCapacity,
 }
 var DefaultReadOptions = ReadOptions{}
 var DefaultWriteOptions = WriteOptions{}

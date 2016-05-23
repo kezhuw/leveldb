@@ -21,7 +21,7 @@ type blockNode struct {
 }
 
 type blockNodeList struct {
-	size int64
+	size int
 	root blockNode
 }
 
@@ -40,7 +40,7 @@ func (l *blockNodeList) insertAfter(n *blockNode, at *blockNode) {
 
 func (l *blockNodeList) PushBack(n *blockNode) {
 	l.insertAfter(n, l.root.prev)
-	l.size += int64(n.b.Len())
+	l.size += n.b.Len()
 }
 
 func (l *blockNodeList) unlink(n *blockNode) {
@@ -50,18 +50,18 @@ func (l *blockNodeList) unlink(n *blockNode) {
 
 func (l *blockNodeList) Remove(n *blockNode) *blockNode {
 	l.unlink(n)
-	l.size -= int64(n.b.Len())
+	l.size -= n.b.Len()
 	return n
 }
 
 func (l *blockNodeList) RemoveFront() *blockNode {
 	n := l.root.next
 	l.unlink(n)
-	l.size -= int64(n.b.Len())
+	l.size -= n.b.Len()
 	return n
 }
 
-func (l *blockNodeList) Size() int64 {
+func (l *blockNodeList) Size() int {
 	return l.size
 }
 
@@ -78,7 +78,7 @@ type blockCachePool struct {
 	mu    sync.Mutex
 	files map[uint64]fileNode
 
-	cap     int64
+	cap     int
 	nodes   blockNodeList
 	evicts  chan fileNode
 	updates chan *blockNode
@@ -210,7 +210,7 @@ func (c *BlockCache) finalize() {
 	c.blockCachePool.release()
 }
 
-func NewBlockCache(cap int64) *BlockCache {
+func NewBlockCache(cap int) *BlockCache {
 	p := &blockCachePool{
 		cap:     cap,
 		files:   make(map[uint64]fileNode),

@@ -63,10 +63,10 @@ type Options struct {
 	// The default value is 1000.
 	MaxOpenFiles int
 
-	// BlockCacheSize specifys the capacity in bytes for block cache.
+	// BlockCacheCapacity specifys the capacity in bytes for block cache.
 	//
 	// The default value is 8MiB.
-	BlockCacheSize int64
+	BlockCacheCapacity int
 
 	// Filter specifys a Filter to filter out unnecessary disk reads when looking for
 	// a specific key. The filter is also used to generate filter data when building

@@ -231,7 +231,7 @@ func NewCache(dbname string, opts *options.Options) *Cache {
 		fs:        opts.FileSystem,
 		options:   opts,
 		cachePool: newCachePool(opts.MaxOpenFiles),
-		blocks:    NewBlockCache(opts.BlockCacheSize),
+		blocks:    NewBlockCache(opts.BlockCacheCapacity),
 	}
 	runtime.SetFinalizer(c, (*Cache).finalize)
 	return c
