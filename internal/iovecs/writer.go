@@ -14,24 +14,19 @@ type Writer interface {
 
 type fileWriter struct {
 	*os.File
-	fd   uintptr
-	vecs []syscall.Iovec
+	fd uintptr
 }
 
 func (f *fileWriter) Writev(slices ...[]byte) (int64, error) {
-	vecs := f.vecs
-	switch n := len(slices); cap(vecs) < n {
-	case true:
-		vecs = make([]syscall.Iovec, 0, n)
-		f.vecs = vecs
-	default:
-		vecs = vecs[:0]
-	}
+	vecs := make([]syscall.Iovec, 0, len(slices))
 	for _, b := range slices {
 		if len(b) == 0 {
 			continue
 		}
 		vecs = append(vecs, syscall.Iovec{Base: &b[0], Len: uint64(len(b))})
+	}
+	if len(vecs) == 0 {
+		return 0, nil
 	}
 	r, _, errno := syscall.Syscall(syscall.SYS_WRITEV, f.fd, uintptr(unsafe.Pointer(&vecs[0])), uintptr(len(vecs)))
 	if errno != 0 {
