@@ -68,7 +68,7 @@ func (w *Writer) Write(b []byte) error {
 	}
 	blockSize := w.blockSize
 	begin, end := true, false
-	offset, iovecs := w.blockOffset, w.iovecs[:]
+	offset, iovecs := w.blockOffset, w.iovecs[:0]
 	for i := 0; true; i++ {
 		leftover := blockSize - offset
 		if leftover < headerSize {
