@@ -85,7 +85,7 @@ func (m *MemTable) newNode(h int) *node {
 
 func (m *MemTable) randomHeight() int {
 	h := 1
-	if h < maxHeight && m.rnd.Intn(4) == 0 {
+	for h < maxHeight && m.rnd.Intn(4) == 0 {
 		h++
 	}
 	return h
