@@ -155,6 +155,7 @@ func (c *levelCompaction) openTableFile() error {
 	c.tableFile = f
 	c.tableMeta.Number = tableNumber
 	c.tableWriter.Reset(f, c.options)
+	c.grandparentsOverlappedBytes = 0
 	return nil
 }
 
