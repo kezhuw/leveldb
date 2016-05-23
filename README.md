@@ -22,6 +22,44 @@ Currently, one level compaction can coexist with memtable compaction. It is poss
 in the future.
 
 
+## Benchmarks
+
+See [kezhuw/go-leveldb-benchmarks][go-leveldb-benchmarks].
+
+```shell
+# go test -driver kezhuw -bench .
+# https://github.com/kezhuw/leveldb
+BenchmarkOpen-4                  1000000              2988 ns/op
+BenchmarkSeekRandom-4            1000000             30365 ns/op
+BenchmarkReadHot-4               1000000              7372 ns/op
+BenchmarkReadRandom-4            1000000              8609 ns/op
+BenchmarkReadMissing-4           1000000             15768 ns/op
+BenchmarkReadReverse-4           1000000              1053 ns/op
+BenchmarkReadSequential-4        2000000               947 ns/op
+BenchmarkWriteRandom-4            200000              8073 ns/op
+BenchmarkWriteSequential-4        200000              7148 ns/op
+BenchmarkDeleteRandom-4           200000              9972 ns/op
+BenchmarkDeleteSequential-4       200000              7756 ns/op
+ok      github.com/kezhuw/go-leveldb-benchmarks 105.298s
+```
+
+```shell
+# go test -driver cpp -bench .
+# https://github.com/google/leveldb  [cgo]
+BenchmarkOpen-4                 10000000               234 ns/op
+BenchmarkSeekRandom-4            1000000             47884 ns/op
+BenchmarkReadHot-4                500000              4914 ns/op
+BenchmarkReadRandom-4             500000              8081 ns/op
+BenchmarkReadMissing-4            500000              7672 ns/op
+BenchmarkReadReverse-4           1000000              1946 ns/op
+BenchmarkReadSequential-4        1000000              1790 ns/op
+BenchmarkWriteRandom-4            200000              6220 ns/op
+BenchmarkWriteSequential-4        200000              5479 ns/op
+BenchmarkDeleteRandom-4           300000              5689 ns/op
+BenchmarkDeleteSequential-4       300000              4974 ns/op
+ok      github.com/kezhuw/go-leveldb-benchmarks 158.519s
+```
+
 ## TODO
 - [ ] Source code documentation [WIP]
 - [ ] Tests [WIP]
@@ -29,7 +67,7 @@ in the future.
 - [ ] Abstract cache interface, so we can share cache among multiple LevelDB instances
 - [ ] Reference counting openning file collection, don't rely on GC
 - [ ] Statistics
-- [ ] Benchmarks
+- [x] Benchmarks, See [kezhuw/go-leveldb-benchmarks][go-leveldb-benchmarks].
 - [ ] Concurrent level compaction
 - [ ] Replace hardcoded constants with configurable options
 - [ ] Automatic adjustment of volatile options
@@ -55,3 +93,6 @@ throw me a pull request.
 
 * [golang/leveldb](https://github.com/golang/leveldb) Official but incomplete Go implementation.  
   The `Comparator.AppendSuccessor` origins from this implementation.
+
+[go-leveldb-benchmarks]: https://github.com/kezhuw/go-leveldb-benchmarks
+
