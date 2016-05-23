@@ -118,7 +118,7 @@ func (c *memtableCompaction) record(edit *version.Edit) {
 	if c.maxLevel > 0 && c.maxLevel < level {
 		level = c.maxLevel
 	}
-	edit.AddedFiles = append(edit.AddedFiles, version.LevelFileMeta{Level: level, FileMeta: fmeta})
+	edit.AddedFiles = append(edit.AddedFiles[:0], version.LevelFileMeta{Level: level, FileMeta: fmeta})
 }
 
 func (c *memtableCompaction) Compact(edit *version.Edit) error {

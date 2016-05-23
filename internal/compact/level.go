@@ -245,6 +245,9 @@ func (c *levelCompaction) compact() error {
 }
 
 func (c *levelCompaction) record(edit *version.Edit) {
+	edit.AddedFiles = edit.AddedFiles[:0]
+	edit.DeletedFiles = edit.DeletedFiles[:0]
+	edit.CompactPointers = edit.CompactPointers[:0]
 	level := c.Level()
 	for which := 0; which < 2; which++ {
 		files := c.Inputs[which]
