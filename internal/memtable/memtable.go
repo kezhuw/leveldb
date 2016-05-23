@@ -132,10 +132,7 @@ func (m *MemTable) findGreaterOrEqual(ikey []byte, prevs []*node) (n *node, hit 
 	p := m.head
 	for h := m.height - 1; h >= 0; h-- {
 		n = p.Next(h)
-		for {
-			if n == nil {
-				break
-			}
+		for n != nil {
 			if r := m.icmp.Compare(ikey, n.ikey); r <= 0 {
 				hit = r == 0
 				break
