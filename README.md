@@ -92,7 +92,7 @@ throw me a pull request.
   The `DB.Range`, `DB.Prefix`, and `filter.Generator` interface origin from this implementation.
 
 * [golang/leveldb](https://github.com/golang/leveldb) Official but incomplete Go implementation.  
-  The `Comparator.AppendSuccessor` origins from this implementation.
+  The `Batch` and `Comparator.AppendSuccessor` origins from this implementation.
 
 [go-leveldb-benchmarks]: https://github.com/kezhuw/go-leveldb-benchmarks
 
