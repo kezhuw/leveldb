@@ -3,16 +3,19 @@ package keys
 type InternalKey []byte
 
 func ToInternalKey(key []byte) (InternalKey, bool) {
-	if len(key) < TagBytes {
+	n := len(key)
+	if n < TagBytes {
 		return nil, false
 	}
-	return key, true
+	return key[:n:n], true
 }
 
 func MakeInternalKey(buf []byte, key []byte, seq Sequence, kind Kind) InternalKey {
+	n := len(key)
 	copy(buf, key)
-	CombineTag(buf[len(key):], seq, kind)
-	return InternalKey(buf)
+	CombineTag(buf[n:], seq, kind)
+	n += TagBytes
+	return InternalKey(buf[:n:n])
 }
 
 func NewInternalKey(key []byte, seq Sequence, kind Kind) InternalKey {
