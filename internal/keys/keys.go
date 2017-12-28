@@ -2,16 +2,6 @@ package keys
 
 import "fmt"
 
-type Sequence uint64
-
-const (
-	MaxSequence Sequence = (1 << 56) - 1
-)
-
-func (seq Sequence) Add(n uint64) Sequence {
-	return seq + Sequence(n)
-}
-
 func ToInternalKey(key []byte) (InternalKey, bool) {
 	if len(key) < TagBytes {
 		return nil, false
