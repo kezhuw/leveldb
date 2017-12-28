@@ -1,7 +1,5 @@
 package keys
 
-import "fmt"
-
 func ToInternalKey(key []byte) (InternalKey, bool) {
 	if len(key) < TagBytes {
 		return nil, false
@@ -47,25 +45,6 @@ func (ikey InternalKey) Split() ([]byte, Sequence, Kind) {
 func (ikey InternalKey) Split2() ([]byte, Sequence) {
 	i := len(ikey) - TagBytes
 	return ikey[:i:i], Sequence(GetTag(ikey[i:]))
-}
-
-type Kind int
-
-const (
-	Delete  = 0
-	Value   = 1
-	maxKind = Value
-	Seek    = maxKind
-)
-
-func (k Kind) String() string {
-	switch k {
-	case Value:
-		return "value setting"
-	case Delete:
-		return "value deletion"
-	}
-	return fmt.Sprintf("kind: %d", k)
 }
 
 type ParsedInternalKey struct {
