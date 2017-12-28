@@ -62,7 +62,7 @@ func buildBatch(t *testing.T, name string, seq keys.Sequence, cases []writeCase)
 	addBatchWrites(t, &b, name, cases)
 	b.SetSequence(seq)
 	if got := b.Sequence(); got != seq {
-		t.Fatalf("%s: expect sequence: %d, got: %d", seq, got)
+		t.Fatalf("%s: expect sequence: %d, got: %d", name, seq, got)
 	}
 	return b
 }
