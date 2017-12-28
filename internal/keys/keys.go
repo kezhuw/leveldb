@@ -17,7 +17,8 @@ func (seq Sequence) Add(n uint64) Sequence {
 }
 
 const (
-	TagLen = 8
+	TagLen   = 8
+	kindBits = 8
 )
 
 func PutTag(buf []byte, seq Sequence, kind Kind) {
@@ -26,7 +27,7 @@ func PutTag(buf []byte, seq Sequence, kind Kind) {
 }
 
 func PackTag(seq Sequence, kind Kind) uint64 {
-	return (uint64(seq) << 8) | uint64(kind)
+	return (uint64(seq) << kindBits) | uint64(kind)
 }
 
 func ToInternalKey(key []byte) (InternalKey, bool) {
@@ -43,7 +44,7 @@ func MakeInternalKey(buf []byte, key []byte, seq Sequence, kind Kind) InternalKe
 }
 
 func NewInternalKey(key []byte, seq Sequence, kind Kind) InternalKey {
-	buf := make([]byte, len(key)+8)
+	buf := make([]byte, len(key)+TagLen)
 	return MakeInternalKey(buf, key, seq, kind)
 }
 
@@ -56,23 +57,23 @@ func (ikey InternalKey) Dup() InternalKey {
 }
 
 func (ikey InternalKey) UserKey() []byte {
-	i := len(ikey) - 8
+	i := len(ikey) - TagLen
 	return ikey[:i:i]
 }
 
 func (ikey InternalKey) Tag() uint64 {
-	i := len(ikey) - 8
+	i := len(ikey) - TagLen
 	return endian.Uint64(ikey[i:])
 }
 
 func (ikey InternalKey) Split() ([]byte, Sequence, Kind) {
-	i := len(ikey) - 8
+	i := len(ikey) - TagLen
 	seq := endian.Uint64(ikey[i:])
-	return ikey[:i:i], Sequence(seq >> 8), Kind(seq & 0xFF)
+	return ikey[:i:i], Sequence(seq >> kindBits), Kind(seq & 0xFF)
 }
 
 func (ikey InternalKey) Split2() ([]byte, Sequence) {
-	i := len(ikey) - 8
+	i := len(ikey) - TagLen
 	return ikey[:i:i], Sequence(endian.Uint64(ikey[i:]))
 }
 
@@ -102,24 +103,24 @@ type ParsedInternalKey struct {
 }
 
 func (k *ParsedInternalKey) Append(dst []byte) []byte {
-	var buf [8]byte
-	endian.PutUint64(buf[:], k.Tag())
+	var buf [TagLen]byte
+	PutTag(buf[:], k.Sequence, k.Kind)
 	dst = append(dst, k.UserKey...)
 	return append(dst, buf[:]...)
 }
 
 func (k *ParsedInternalKey) Parse(key []byte) bool {
-	i := len(key) - 8
+	i := len(key) - TagLen
 	if i < 0 {
 		return false
 	}
 	tag := endian.Uint64(key[i:])
 	k.UserKey = key[:i:i]
 	k.Kind = Kind(tag & 0xff)
-	k.Sequence = Sequence(tag >> 8)
+	k.Sequence = Sequence(tag >> kindBits)
 	return k.Kind <= maxKind
 }
 
 func (k *ParsedInternalKey) Tag() uint64 {
-	return (uint64(k.Sequence) << 8) | uint64(k.Kind)
+	return PackTag(k.Sequence, k.Kind)
 }
