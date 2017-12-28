@@ -41,8 +41,8 @@ func (ikey InternalKey) Tag() uint64 {
 
 func (ikey InternalKey) Split() ([]byte, Sequence, Kind) {
 	i := len(ikey) - TagBytes
-	tag := GetTag(ikey[i:])
-	return ikey[:i:i], Sequence(tag >> kindBits), Kind(tag & 0xFF)
+	seq, kind := ExtractTag(ikey[i:])
+	return ikey[:i:i], seq, kind
 }
 
 func (ikey InternalKey) Split2() ([]byte, Sequence) {
