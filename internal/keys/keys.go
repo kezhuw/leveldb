@@ -57,20 +57,6 @@ func NewInternalKey(key []byte, seq Sequence, kind Kind) InternalKey {
 	return MakeInternalKey(buf, key, seq, kind)
 }
 
-func Max(cmp Comparer, a, b []byte) []byte {
-	if cmp.Compare(a, b) > 0 {
-		return a
-	}
-	return b
-}
-
-func Min(cmp Comparer, a, b []byte) []byte {
-	if cmp.Compare(a, b) < 0 {
-		return a
-	}
-	return b
-}
-
 type InternalKey []byte
 
 func (ikey InternalKey) Dup() InternalKey {
