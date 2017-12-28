@@ -220,7 +220,7 @@ func (c *levelCompaction) compact() error {
 		if !ok {
 			return errors.ErrCorruptInternalKey
 		}
-		currentUserKey, currentSequence, kind := ikey.Split3()
+		currentUserKey, currentSequence, kind := ikey.Split()
 		if len(lastKey) == 0 || ucmp.Compare(lastKey.UserKey(), currentUserKey) != 0 {
 			lastKey = append(lastKey[:0], currentUserKey...)
 			lastSequence = keys.MaxSequence

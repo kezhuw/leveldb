@@ -80,11 +80,11 @@ func (c *memtableCompaction) compact() (err error) {
 	w.Add(it.Key(), it.Value())
 	c.tableMeta.Smallest = append(c.tableMeta.Smallest[:0], it.Key()...)
 	c.tableMeta.Largest = append(c.tableMeta.Largest[:0], c.tableMeta.Smallest...)
-	lastUserKey, lastSequence := c.tableMeta.Smallest.Split()
+	lastUserKey, lastSequence := c.tableMeta.Smallest.Split2()
 	ucmp := c.options.Comparator.UserKeyComparator
 	for it.Next() {
 		key := it.Key()
-		currentUserKey, currentSequence := keys.InternalKey(key).Split()
+		currentUserKey, currentSequence := keys.InternalKey(key).Split2()
 		if ucmp.Compare(lastUserKey, currentUserKey) == 0 && lastSequence <= c.smallestSequence {
 			continue
 		}

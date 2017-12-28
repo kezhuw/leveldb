@@ -70,7 +70,7 @@ func (t *Table) Get(ikey keys.InternalKey, opts *options.ReadOptions) ([]byte, e
 	}
 	defer dataIt.Release()
 
-	ukey, _, kind := keys.InternalKey(dataIt.Key()).Split3()
+	ukey, _, kind := keys.InternalKey(dataIt.Key()).Split()
 	if t.options.Comparator.UserKeyComparator.Compare(ukey, ikey.UserKey()) == 0 {
 		switch kind {
 		case keys.Delete:

@@ -65,15 +65,15 @@ func (ikey InternalKey) Tag() uint64 {
 	return endian.Uint64(ikey[i:])
 }
 
-func (ikey InternalKey) Split() ([]byte, Sequence) {
-	i := len(ikey) - 8
-	return ikey[:i:i], Sequence(endian.Uint64(ikey[i:]))
-}
-
-func (ikey InternalKey) Split3() ([]byte, Sequence, Kind) {
+func (ikey InternalKey) Split() ([]byte, Sequence, Kind) {
 	i := len(ikey) - 8
 	seq := endian.Uint64(ikey[i:])
 	return ikey[:i:i], Sequence(seq >> 8), Kind(seq & 0xFF)
+}
+
+func (ikey InternalKey) Split2() ([]byte, Sequence) {
+	i := len(ikey) - 8
+	return ikey[:i:i], Sequence(endian.Uint64(ikey[i:]))
 }
 
 type Kind int
