@@ -243,7 +243,7 @@ func newDBIterator(db *DB, base *version.Version, seq keys.Sequence, it iterator
 		sequence: seq,
 	}
 	runtime.SetFinalizer(dbIt, (*dbIterator).finalize)
-	keys.PutTag(dbIt.tag[:], seq, keys.Seek)
+	keys.CombineTag(dbIt.tag[:], seq, keys.Seek)
 	dbIt.lastKey = dbIt.keyScratch[:0]
 	return dbIt
 }

@@ -1,10 +1,6 @@
 package keys
 
-import (
-	"fmt"
-
-	"github.com/kezhuw/leveldb/internal/endian"
-)
+import "fmt"
 
 type Sequence uint64
 
@@ -16,20 +12,6 @@ func (seq Sequence) Add(n uint64) Sequence {
 	return seq + Sequence(n)
 }
 
-const (
-	TagBytes = 8
-	kindBits = 8
-)
-
-func PutTag(buf []byte, seq Sequence, kind Kind) {
-	tag := PackTag(seq, kind)
-	endian.PutUint64(buf, tag)
-}
-
-func PackTag(seq Sequence, kind Kind) uint64 {
-	return (uint64(seq) << kindBits) | uint64(kind)
-}
-
 func ToInternalKey(key []byte) (InternalKey, bool) {
 	if len(key) < TagBytes {
 		return nil, false
@@ -39,7 +21,7 @@ func ToInternalKey(key []byte) (InternalKey, bool) {
 
 func MakeInternalKey(buf []byte, key []byte, seq Sequence, kind Kind) InternalKey {
 	copy(buf, key)
-	PutTag(buf[len(key):], seq, kind)
+	CombineTag(buf[len(key):], seq, kind)
 	return InternalKey(buf)
 }
 
@@ -63,18 +45,18 @@ func (ikey InternalKey) UserKey() []byte {
 
 func (ikey InternalKey) Tag() uint64 {
 	i := len(ikey) - TagBytes
-	return endian.Uint64(ikey[i:])
+	return GetTag(ikey[i:])
 }
 
 func (ikey InternalKey) Split() ([]byte, Sequence, Kind) {
 	i := len(ikey) - TagBytes
-	seq := endian.Uint64(ikey[i:])
-	return ikey[:i:i], Sequence(seq >> kindBits), Kind(seq & 0xFF)
+	tag := GetTag(ikey[i:])
+	return ikey[:i:i], Sequence(tag >> kindBits), Kind(tag & 0xFF)
 }
 
 func (ikey InternalKey) Split2() ([]byte, Sequence) {
 	i := len(ikey) - TagBytes
-	return ikey[:i:i], Sequence(endian.Uint64(ikey[i:]))
+	return ikey[:i:i], Sequence(GetTag(ikey[i:]))
 }
 
 type Kind int
@@ -104,7 +86,7 @@ type ParsedInternalKey struct {
 
 func (k *ParsedInternalKey) Append(dst []byte) []byte {
 	var buf [TagBytes]byte
-	PutTag(buf[:], k.Sequence, k.Kind)
+	CombineTag(buf[:], k.Sequence, k.Kind)
 	dst = append(dst, k.UserKey...)
 	return append(dst, buf[:]...)
 }
@@ -114,10 +96,8 @@ func (k *ParsedInternalKey) Parse(key []byte) bool {
 	if i < 0 {
 		return false
 	}
-	tag := endian.Uint64(key[i:])
 	k.UserKey = key[:i:i]
-	k.Kind = Kind(tag & 0xff)
-	k.Sequence = Sequence(tag >> kindBits)
+	k.Sequence, k.Kind = ExtractTag(key[i:])
 	return k.Kind <= maxKind
 }
 
