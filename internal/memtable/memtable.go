@@ -165,8 +165,8 @@ func (m *MemTable) Batch(seq keys.Sequence, items []batch.Item) {
 }
 
 func (m *MemTable) Add(seq keys.Sequence, kind keys.Kind, key, value []byte) {
-	b := m.allocBytes(len(key) + keys.TagLen + len(value))
-	ikey := b[:len(key)+keys.TagLen]
+	b := m.allocBytes(len(key) + keys.TagBytes + len(value))
+	ikey := b[:len(key)+keys.TagBytes]
 	keys.MakeInternalKey(ikey, key, seq, kind)
 
 	prevs := m.prevs[:]

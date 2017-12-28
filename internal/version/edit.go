@@ -237,7 +237,7 @@ func (edit *Edit) decodeCompactPointer(buf []byte) []byte {
 	}
 	var ikey []byte
 	buf = edit.decodeBytes(buf, &ikey, ErrCorruptEditCompactPointer)
-	if len(ikey) < keys.TagLen {
+	if len(ikey) < keys.TagBytes {
 		panic(ErrCorruptEditCompactPointer)
 	}
 	edit.CompactPointers = append(edit.CompactPointers, LevelCompactPointer{Level: int(level), Largest: keys.InternalKey(ikey)})

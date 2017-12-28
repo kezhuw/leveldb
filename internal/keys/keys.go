@@ -17,7 +17,7 @@ func (seq Sequence) Add(n uint64) Sequence {
 }
 
 const (
-	TagLen   = 8
+	TagBytes = 8
 	kindBits = 8
 )
 
@@ -31,7 +31,7 @@ func PackTag(seq Sequence, kind Kind) uint64 {
 }
 
 func ToInternalKey(key []byte) (InternalKey, bool) {
-	if len(key) < TagLen {
+	if len(key) < TagBytes {
 		return nil, false
 	}
 	return key, true
@@ -44,7 +44,7 @@ func MakeInternalKey(buf []byte, key []byte, seq Sequence, kind Kind) InternalKe
 }
 
 func NewInternalKey(key []byte, seq Sequence, kind Kind) InternalKey {
-	buf := make([]byte, len(key)+TagLen)
+	buf := make([]byte, len(key)+TagBytes)
 	return MakeInternalKey(buf, key, seq, kind)
 }
 
@@ -57,23 +57,23 @@ func (ikey InternalKey) Dup() InternalKey {
 }
 
 func (ikey InternalKey) UserKey() []byte {
-	i := len(ikey) - TagLen
+	i := len(ikey) - TagBytes
 	return ikey[:i:i]
 }
 
 func (ikey InternalKey) Tag() uint64 {
-	i := len(ikey) - TagLen
+	i := len(ikey) - TagBytes
 	return endian.Uint64(ikey[i:])
 }
 
 func (ikey InternalKey) Split() ([]byte, Sequence, Kind) {
-	i := len(ikey) - TagLen
+	i := len(ikey) - TagBytes
 	seq := endian.Uint64(ikey[i:])
 	return ikey[:i:i], Sequence(seq >> kindBits), Kind(seq & 0xFF)
 }
 
 func (ikey InternalKey) Split2() ([]byte, Sequence) {
-	i := len(ikey) - TagLen
+	i := len(ikey) - TagBytes
 	return ikey[:i:i], Sequence(endian.Uint64(ikey[i:]))
 }
 
@@ -103,14 +103,14 @@ type ParsedInternalKey struct {
 }
 
 func (k *ParsedInternalKey) Append(dst []byte) []byte {
-	var buf [TagLen]byte
+	var buf [TagBytes]byte
 	PutTag(buf[:], k.Sequence, k.Kind)
 	dst = append(dst, k.UserKey...)
 	return append(dst, buf[:]...)
 }
 
 func (k *ParsedInternalKey) Parse(key []byte) bool {
-	i := len(key) - TagLen
+	i := len(key) - TagBytes
 	if i < 0 {
 		return false
 	}
