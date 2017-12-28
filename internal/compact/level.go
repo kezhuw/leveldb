@@ -216,11 +216,11 @@ func (c *levelCompaction) compact() error {
 	var lastKey keys.InternalKey
 	var lastSequence keys.Sequence
 	for it.Next() {
-		ikey := it.Key()
-		currentUserKey, currentSequence, kind, ok := keys.SplitInternalKey3(ikey)
+		ikey, ok := keys.ToInternalKey(it.Key())
 		if !ok {
 			return errors.ErrCorruptInternalKey
 		}
+		currentUserKey, currentSequence, kind := ikey.Split3()
 		if len(lastKey) == 0 || ucmp.Compare(lastKey.UserKey(), currentUserKey) != 0 {
 			lastKey = append(lastKey[:0], currentUserKey...)
 			lastSequence = keys.MaxSequence

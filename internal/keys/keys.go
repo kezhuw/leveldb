@@ -29,21 +29,11 @@ func PackTag(seq Sequence, kind Kind) uint64 {
 	return (uint64(seq) << 8) | uint64(kind)
 }
 
-func SplitInternalKey(ikey []byte) ([]byte, Sequence, bool) {
-	i := len(ikey) - 8
-	if i < 0 {
-		return nil, 0, false
+func ToInternalKey(key []byte) (InternalKey, bool) {
+	if len(key) < TagLen {
+		return nil, false
 	}
-	return ikey[:i:i], Sequence(endian.Uint64(ikey[i:])), true
-}
-
-func SplitInternalKey3(ikey []byte) ([]byte, Sequence, Kind, bool) {
-	i := len(ikey) - 8
-	if i < 0 {
-		return nil, 0, 0, false
-	}
-	seq := endian.Uint64(ikey[i:])
-	return ikey[:i:i], Sequence(seq >> 8), Kind(seq & 0xFF), true
+	return key, true
 }
 
 func MakeInternalKey(buf []byte, key []byte, seq Sequence, kind Kind) InternalKey {
