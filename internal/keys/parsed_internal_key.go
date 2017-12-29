@@ -23,6 +23,6 @@ func (k *ParsedInternalKey) Parse(key []byte) bool {
 	return k.Kind <= maxKind
 }
 
-func (k *ParsedInternalKey) Tag() uint64 {
+func (k *ParsedInternalKey) Tag() Tag {
 	return PackTag(k.Sequence, k.Kind)
 }

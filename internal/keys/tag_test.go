@@ -9,7 +9,7 @@ import (
 
 type tagTest struct {
 	buf  []byte
-	tag  uint64
+	tag  keys.Tag
 	seq  keys.Sequence
 	kind keys.Kind
 }

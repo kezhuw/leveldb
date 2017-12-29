@@ -34,7 +34,7 @@ func (ikey InternalKey) UserKey() []byte {
 	return ikey[:i:i]
 }
 
-func (ikey InternalKey) Tag() uint64 {
+func (ikey InternalKey) Tag() Tag {
 	i := len(ikey) - TagBytes
 	return GetTag(ikey[i:])
 }
