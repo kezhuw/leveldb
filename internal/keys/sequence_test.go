@@ -33,3 +33,45 @@ func TestSequenceNext(t *testing.T) {
 		}
 	}
 }
+
+type maxSequenceTest struct {
+	seq      keys.Sequence
+	overflow bool
+}
+
+var maxSequenceTests = []maxSequenceTest{
+	{
+		seq:      0x00123456789abcde,
+		overflow: false,
+	},
+	{
+		seq:      0x00edcba987654321,
+		overflow: false,
+	},
+	{
+		seq:      keys.MaxSequence,
+		overflow: false,
+	},
+	{
+		seq:      keys.MaxSequence + 1,
+		overflow: true,
+	},
+	{
+		seq:      0x10123456789abcde,
+		overflow: true,
+	},
+	{
+		seq:      0x1000000000000000,
+		overflow: true,
+	},
+}
+
+func TestMaxSequence(t *testing.T) {
+	for i, test := range maxSequenceTests {
+		tag := keys.PackTag(test.seq, keys.Seek)
+		got, _ := keys.UnpackTag(tag)
+		if (got == test.seq) == test.overflow {
+			t.Errorf("test=%d seq=%#x overflow=%t got=%#x", i, test.seq, test.overflow, got)
+		}
+	}
+}
