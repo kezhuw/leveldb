@@ -25,9 +25,9 @@ var sequenceTests = []sequenceTest{
 	},
 }
 
-func TestSequenceAdd(t *testing.T) {
+func TestSequenceNext(t *testing.T) {
 	for i, test := range sequenceTests {
-		got := test.seq.Add(test.next)
+		got := test.seq.Next(test.next)
 		if got != test.want {
 			t.Errorf("test=%d sequence=%#x next=%d got=%#x want=%#x", i, test.seq, test.next, got, test.want)
 		}

@@ -169,7 +169,7 @@ func (db *DB) loadLog(mem *memtable.MemTable, logNumber uint64, flag int, maxSeq
 			return nil, 0, errors.ErrCorruptWriteBatch
 		}
 		mem.Batch(seq, items)
-		if lastSequence := seq.Add(uint64(len(items) - 1)); lastSequence > *maxSequence {
+		if lastSequence := seq.Next(uint64(len(items) - 1)); lastSequence > *maxSequence {
 			*maxSequence = lastSequence
 		}
 	}
@@ -498,7 +498,7 @@ func (db *DB) writeBatch(sync bool, batch batch.Batch, reply chan error) {
 	}
 	lastSequence := db.state.LastSequence()
 	batch.SetSequence(lastSequence + 1)
-	lastSequence = lastSequence.Add(uint64(batch.Count()))
+	lastSequence = lastSequence.Next(uint64(batch.Count()))
 	err := db.writeLog(sync, batch.Bytes())
 	if err != nil {
 		reply <- err
