@@ -44,8 +44,3 @@ func (ikey InternalKey) Split() ([]byte, Sequence, Kind) {
 	seq, kind := ExtractTag(ikey[i:])
 	return ikey[:i:i], seq, kind
 }
-
-func (ikey InternalKey) Split2() ([]byte, Sequence) {
-	i := len(ikey) - TagBytes
-	return ikey[:i:i], Sequence(GetTag(ikey[i:]))
-}
