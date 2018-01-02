@@ -139,7 +139,11 @@ func (m *MemTable) findGreaterOrEqual(ikey []byte, prevs []*node) (n *node, hit 
 			}
 			p, n = n, n.Next(h)
 		}
-		prevs[h] = p
+		if prevs != nil {
+			prevs[h] = p
+		} else if hit {
+			break
+		}
 	}
 	return
 }
@@ -204,9 +208,8 @@ func (m *MemTable) Add(seq keys.Sequence, kind keys.Kind, key, value []byte) {
 }
 
 func (m *MemTable) Get(ikey keys.InternalKey) (value []byte, err error, ok bool) {
-	var prevs [maxHeight]*node
 	m.mutex.RLock()
-	n, hit := m.findGreaterOrEqual(ikey, prevs[:])
+	n, hit := m.findGreaterOrEqual(ikey, nil)
 	m.mutex.RUnlock()
 	if n != nil && (hit || m.icmp.UserKeyComparator.Compare(ikey.UserKey(), keys.InternalKey(n.ikey).UserKey()) == 0) {
 		if n.value == nil {

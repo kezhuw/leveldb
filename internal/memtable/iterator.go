@@ -3,9 +3,8 @@ package memtable
 // Exported iterator will strip sequence with bigger value.
 // Don't do it here.
 type memtableIterator struct {
-	m     *MemTable
-	n     *node
-	prevs [maxHeight]*node
+	m *MemTable
+	n *node
 }
 
 func (it *memtableIterator) First() bool {
@@ -34,7 +33,7 @@ func (it *memtableIterator) Prev() bool {
 
 func (it *memtableIterator) Seek(ikey []byte) bool {
 	it.m.mutex.RLock()
-	it.n, _ = it.m.findGreaterOrEqual(ikey, it.prevs[:])
+	it.n, _ = it.m.findGreaterOrEqual(ikey, nil)
 	it.m.mutex.RUnlock()
 	return it.Valid()
 }
