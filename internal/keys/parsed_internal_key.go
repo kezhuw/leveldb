@@ -3,8 +3,8 @@ package keys
 // ParsedInternalKey is a parsed or splited internal representation.
 type ParsedInternalKey struct {
 	UserKey  []byte
-	Kind     Kind
 	Sequence Sequence
+	Kind     Kind
 }
 
 // Parse parses input key as internal key and returns true for valid internal
