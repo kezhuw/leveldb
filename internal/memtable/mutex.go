@@ -1,3 +1,5 @@
+// +build !atomic
+
 package memtable
 
 import "sync"
