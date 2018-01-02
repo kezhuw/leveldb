@@ -1,9 +1,5 @@
 package keys
 
-type Comparer interface {
-	Compare(a, b []byte) int
-}
-
 type Comparator interface {
 	Name() string
 	Compare(a, b []byte) int
