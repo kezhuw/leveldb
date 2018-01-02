@@ -7,14 +7,6 @@ type ParsedInternalKey struct {
 	Sequence Sequence
 }
 
-// Append appends this internal key to destination buffer.
-func (k *ParsedInternalKey) Append(dst []byte) []byte {
-	var buf [TagBytes]byte
-	CombineTag(buf[:], k.Sequence, k.Kind)
-	dst = append(dst, k.UserKey...)
-	return append(dst, buf[:]...)
-}
-
 // Parse parses input key as internal key and returns true for valid internal
 // key. It is illegal to access other fields and methods after returning false.
 func (k *ParsedInternalKey) Parse(key []byte) bool {
@@ -30,4 +22,12 @@ func (k *ParsedInternalKey) Parse(key []byte) bool {
 // Tag returns tag of this internal key.
 func (k *ParsedInternalKey) Tag() Tag {
 	return PackTag(k.Sequence, k.Kind)
+}
+
+// Append appends this internal key to destination buffer.
+func (k *ParsedInternalKey) Append(dst []byte) []byte {
+	var buf [TagBytes]byte
+	CombineTag(buf[:], k.Sequence, k.Kind)
+	dst = append(dst, k.UserKey...)
+	return append(dst, buf[:]...)
 }
