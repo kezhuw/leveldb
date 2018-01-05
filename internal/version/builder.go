@@ -35,7 +35,7 @@ func (b *builder) Build(v *Version) (int64, error) {
 		case log.ErrIncompleteRecord:
 			offset := r.Offset()
 			b.ManifestFile.Truncate(offset)
-			b.ManifestFile.Seek(offset, 0)
+			b.ManifestFile.Seek(offset, io.SeekStart)
 			goto done
 		default:
 			return 0, err

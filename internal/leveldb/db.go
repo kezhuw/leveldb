@@ -156,7 +156,7 @@ func (db *DB) loadLog(mem *memtable.MemTable, logNumber uint64, flag int, maxSeq
 		case log.ErrIncompleteRecord:
 			offset := r.Offset()
 			logFile.Truncate(offset)
-			_, err = logFile.Seek(offset, 0)
+			_, err = logFile.Seek(offset, io.SeekStart)
 			return logFile, offset, err
 		default:
 			logFile.Close()
