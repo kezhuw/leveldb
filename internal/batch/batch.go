@@ -27,7 +27,7 @@ func (b *Batch) Put(key, value []byte) {
 	if !ok {
 		return
 	}
-	b.data = append(b.data, keys.Value)
+	b.data = append(b.data, byte(keys.Value))
 	b.appendBytes(scratch, key)
 	b.appendBytes(scratch, value)
 }
@@ -37,7 +37,7 @@ func (b *Batch) Delete(key []byte) {
 	if !ok {
 		return
 	}
-	b.data = append(b.data, keys.Delete)
+	b.data = append(b.data, byte(keys.Delete))
 	b.appendBytes(scratch, key)
 }
 
@@ -191,9 +191,9 @@ func (b *Batch) Split(dst []Item) (seq keys.Sequence, items []Item, ok bool) {
 		typ := buf[0]
 		key, buf = getLengthPrefixedBytesPanic(buf[1:])
 		switch typ {
-		case keys.Value:
+		case byte(keys.Value):
 			value, buf = getLengthPrefixedBytesPanic(buf)
-		case keys.Delete:
+		case byte(keys.Delete):
 		default:
 			return seq, items, false
 		}

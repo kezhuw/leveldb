@@ -10,10 +10,10 @@ const (
 	// persisted to files.
 
 	// Delete represents deletion of this key.
-	Delete = 0
+	Delete Kind = 0
 	// Value represents value setting of this key.
-	Value   = 1
-	maxKind = Value
+	Value   Kind = 1
+	maxKind      = Value
 
 	// Seek is maximum(Value, Delete), which is a valid Kind and
 	// serves as start point for keys with same sequence.
