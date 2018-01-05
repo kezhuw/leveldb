@@ -68,4 +68,5 @@ func sharedPrefixLen(a, b []byte) int {
 	return i
 }
 
+// BytewiseComparator is an lexicographic ordering comparator, it has same ordring with bytes.Compare.
 var BytewiseComparator UserComparator = bytewiseComparator{}
