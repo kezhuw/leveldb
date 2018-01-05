@@ -13,7 +13,9 @@ const (
 	maxKind = Value
 
 	// Seek is maximum(Value, Delete), which is a valid Kind and
-	// serves as termination point for keys with same sequence.
+	// serves as start point for keys with same sequence.
+	//
+	// See InternalComparator.Compare for ordering among internal keys.
 	Seek = maxKind
 )
 
