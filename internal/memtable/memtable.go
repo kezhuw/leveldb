@@ -169,9 +169,9 @@ func (m *MemTable) Batch(seq keys.Sequence, items []batch.Item) {
 }
 
 func (m *MemTable) Add(seq keys.Sequence, kind keys.Kind, key, value []byte) {
-	b := m.allocBytes(len(key) + keys.TagBytes + len(value))
-	ikey := b[:len(key)+keys.TagBytes]
-	keys.MakeInternalKey(ikey, key, seq, kind)
+	ikeyLen := len(key) + keys.TagBytes
+	b := m.allocBytes(ikeyLen + len(value))
+	ikey := []byte(keys.MakeInternalKey(b, key, seq, kind))
 
 	prevs := m.prevs[:]
 	_, hit := m.findGreaterOrEqual(ikey, prevs)
@@ -181,11 +181,8 @@ func (m *MemTable) Add(seq keys.Sequence, kind keys.Kind, key, value []byte) {
 
 	n := m.allocNode()
 	n.ikey = ikey
-	n.value = b[len(ikey):]
-	switch kind {
-	case keys.Delete:
-		n.value = nil
-	default:
+	if kind == keys.Value {
+		n.value = b[ikeyLen:]
 		copy(n.value, value)
 	}
 
