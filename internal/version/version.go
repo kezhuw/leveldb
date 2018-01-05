@@ -249,15 +249,15 @@ restart:
 			continue
 		}
 		o.Overlap(f)
-		switch {
-		case ucmp.Compare(smallest.UserKey(), f.Smallest.UserKey()) > 0:
-			smallest = f.Smallest
-			if ucmp.Compare(largest.UserKey(), f.Largest.UserKey()) < 0 {
+		lowerBoundExtended := ucmp.Compare(f.Smallest.UserKey(), smallest.UserKey()) < 0
+		upperBoundExtended := ucmp.Compare(f.Largest.UserKey(), largest.UserKey()) > 0
+		if lowerBoundExtended || upperBoundExtended {
+			if lowerBoundExtended {
+				smallest = f.Smallest
+			}
+			if upperBoundExtended {
 				largest = f.Largest
 			}
-			goto restart
-		case ucmp.Compare(largest.UserKey(), f.Largest.UserKey()) < 0:
-			largest = f.Largest
 			goto restart
 		}
 	}
