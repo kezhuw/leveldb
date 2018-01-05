@@ -6,6 +6,9 @@ import "fmt"
 type Kind int
 
 const (
+	// XXX Don't change those values, together with user keys there are
+	// persisted to files.
+
 	// Delete represents deletion of this key.
 	Delete = 0
 	// Value represents value setting of this key.
