@@ -96,21 +96,19 @@ func (m *mergeIterator) Next() bool {
 			m.current = nil
 			return false
 		}
-		fallthrough
-	default:
-		if !m.current.Next() {
-			if err := m.current.Err(); err != nil {
-				m.err = err
-				m.current = nil
-				return false
-			}
-			last := len(m.iterators) - 1
-			m.iterators[last], m.iterators[m.index] = m.iterators[m.index], m.iterators[last]
-			m.iterators = m.iterators[:last]
-		}
-		m.current, m.index = m.findSmallest()
-		return m.Valid()
 	}
+	if !m.current.Next() {
+		if err := m.current.Err(); err != nil {
+			m.err = err
+			m.current = nil
+			return false
+		}
+		last := len(m.iterators) - 1
+		m.iterators[last], m.iterators[m.index] = m.iterators[m.index], m.iterators[last]
+		m.iterators = m.iterators[:last]
+	}
+	m.current, m.index = m.findSmallest()
+	return m.Valid()
 }
 
 func (m *mergeIterator) Prev() bool {
@@ -125,21 +123,19 @@ func (m *mergeIterator) Prev() bool {
 			m.current = nil
 			return false
 		}
-		fallthrough
-	default:
-		if !m.current.Prev() {
-			if err := m.current.Err(); err != nil {
-				m.err = err
-				m.current = nil
-				return false
-			}
-			last := len(m.iterators) - 1
-			m.iterators[last], m.iterators[m.index] = m.iterators[m.index], m.iterators[last]
-			m.iterators = m.iterators[:last]
-		}
-		m.current, m.index = m.findLargest()
-		return m.Valid()
 	}
+	if !m.current.Prev() {
+		if err := m.current.Err(); err != nil {
+			m.err = err
+			m.current = nil
+			return false
+		}
+		last := len(m.iterators) - 1
+		m.iterators[last], m.iterators[m.index] = m.iterators[m.index], m.iterators[last]
+		m.iterators = m.iterators[:last]
+	}
+	m.current, m.index = m.findLargest()
+	return m.Valid()
 }
 
 func (m *mergeIterator) Valid() bool {
