@@ -3,15 +3,15 @@ package iterator
 import "github.com/kezhuw/leveldb/internal/keys"
 
 type startIterator struct {
-	cmp   keys.Comparer
-	soi   bool
-	iter  Iterator
-	valid bool
-	start []byte
+	cmp    keys.Comparer
+	iter   Iterator
+	start  []byte
+	valid  bool
+	seeked bool
 }
 
 func (it *startIterator) First() bool {
-	it.soi = true
+	it.seeked = true
 	it.valid = it.iter.Seek(it.start)
 	return it.valid
 }
@@ -26,12 +26,12 @@ func (it *startIterator) checkStart(valid bool) bool {
 }
 
 func (it *startIterator) Last() bool {
-	it.soi = true
+	it.seeked = true
 	return it.checkStart(it.Last())
 }
 
 func (it *startIterator) Next() bool {
-	if it.soi {
+	if it.seeked {
 		it.valid = it.iter.Next()
 		return it.valid
 	}
@@ -39,7 +39,7 @@ func (it *startIterator) Next() bool {
 }
 
 func (it *startIterator) Prev() bool {
-	it.soi = true
+	it.seeked = true
 	return it.checkStart(it.iter.Prev())
 }
 
@@ -47,7 +47,7 @@ func (it *startIterator) Seek(target []byte) bool {
 	if it.cmp.Compare(target, it.start) < 0 {
 		target = it.start
 	}
-	it.soi = true
+	it.seeked = true
 	it.valid = it.iter.Seek(target)
 	return it.valid
 }

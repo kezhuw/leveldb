@@ -3,12 +3,12 @@ package iterator
 import "github.com/kezhuw/leveldb/internal/keys"
 
 type rangeIterator struct {
-	cmp   keys.Comparer
-	soi   bool
-	iter  Iterator
-	valid bool
-	start []byte
-	limit []byte
+	cmp    keys.Comparer
+	iter   Iterator
+	start  []byte
+	limit  []byte
+	valid  bool
+	seeked bool
 }
 
 func (it *rangeIterator) checkStart(valid bool) bool {
@@ -30,12 +30,12 @@ func (it *rangeIterator) checkLimit(valid bool) bool {
 }
 
 func (it *rangeIterator) First() bool {
-	it.soi = true
+	it.seeked = true
 	return it.checkLimit(it.iter.Seek(it.start))
 }
 
 func (it *rangeIterator) Last() bool {
-	it.soi = true
+	it.seeked = true
 	switch {
 	case it.iter.Seek(it.limit):
 		for it.iter.Prev() {
@@ -63,7 +63,7 @@ func (it *rangeIterator) Last() bool {
 
 func (it *rangeIterator) Next() bool {
 	switch {
-	case !it.soi:
+	case !it.seeked:
 		return it.First()
 	case it.valid:
 		return it.checkLimit(it.iter.Next())
@@ -73,7 +73,7 @@ func (it *rangeIterator) Next() bool {
 
 func (it *rangeIterator) Prev() bool {
 	switch {
-	case !it.soi:
+	case !it.seeked:
 		return it.Last()
 	case it.valid:
 		return it.checkStart(it.iter.Prev())
@@ -82,7 +82,7 @@ func (it *rangeIterator) Prev() bool {
 }
 
 func (it *rangeIterator) Seek(target []byte) bool {
-	it.soi = true
+	it.seeked = true
 	switch {
 	case it.cmp.Compare(target, it.start) < 0:
 		target = it.start

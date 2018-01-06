@@ -3,11 +3,11 @@ package iterator
 import "github.com/kezhuw/leveldb/internal/keys"
 
 type limitIterator struct {
-	cmp   keys.Comparer
-	soi   bool
-	iter  Iterator
-	valid bool
-	limit []byte
+	cmp    keys.Comparer
+	iter   Iterator
+	limit  []byte
+	valid  bool
+	seeked bool
 }
 
 func (it *limitIterator) checkLimit(valid bool) bool {
@@ -20,12 +20,12 @@ func (it *limitIterator) checkLimit(valid bool) bool {
 }
 
 func (it *limitIterator) First() bool {
-	it.soi = true
+	it.seeked = true
 	return it.checkLimit(it.iter.First())
 }
 
 func (it *limitIterator) Last() bool {
-	it.soi = true
+	it.seeked = true
 	switch {
 	case it.iter.Seek(it.limit):
 		for it.iter.Prev() {
@@ -54,17 +54,17 @@ func (it *limitIterator) Last() bool {
 }
 
 func (it *limitIterator) Next() bool {
-	it.soi = true
+	it.seeked = true
 	return it.checkLimit(it.iter.Next())
 }
 
 func (it *limitIterator) Seek(target []byte) bool {
-	it.soi = true
+	it.seeked = true
 	return it.checkLimit(it.iter.Seek(target))
 }
 
 func (it *limitIterator) Prev() bool {
-	if it.soi {
+	if it.seeked {
 		it.valid = it.iter.Prev()
 		return it.valid
 	}

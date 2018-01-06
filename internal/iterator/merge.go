@@ -4,7 +4,7 @@ import "github.com/kezhuw/leveldb/internal/keys"
 
 type mergeIterator struct {
 	cmp       keys.Comparer
-	soi       bool
+	seeked    bool
 	err       error
 	direction Direction
 	index     int
@@ -28,7 +28,7 @@ func (m *mergeIterator) First() bool {
 		}
 		i++
 	}
-	m.soi = true
+	m.seeked = true
 	m.err = nil
 	m.direction = Forward
 	m.iterators = iterators[:i]
@@ -52,7 +52,7 @@ func (m *mergeIterator) Last() bool {
 		}
 		i++
 	}
-	m.soi = true
+	m.seeked = true
 	m.err = nil
 	m.direction = Reverse
 	m.iterators = iterators[:i]
@@ -76,7 +76,7 @@ func (m *mergeIterator) Seek(key []byte) bool {
 		}
 		i++
 	}
-	m.soi = true
+	m.seeked = true
 	m.err = nil
 	m.direction = Forward
 	m.iterators = iterators[:i]
@@ -86,7 +86,7 @@ func (m *mergeIterator) Seek(key []byte) bool {
 
 func (m *mergeIterator) Next() bool {
 	switch {
-	case !m.soi:
+	case !m.seeked:
 		return m.First()
 	case m.current == nil:
 		return false
@@ -116,7 +116,7 @@ func (m *mergeIterator) Next() bool {
 
 func (m *mergeIterator) Prev() bool {
 	switch {
-	case !m.soi:
+	case !m.seeked:
 		return m.Last()
 	case m.current == nil:
 		return false
