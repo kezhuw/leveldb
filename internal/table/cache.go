@@ -164,15 +164,14 @@ func (c *Cache) load(fileNumber, fileSize uint64, n *node) (*Table, error) {
 	defer n.wg.Done()
 	tableName := files.TableFileName(c.dbname, fileNumber)
 	tableFile, err := c.fs.Open(tableName, os.O_RDONLY)
-	if err != nil {
-		var err1 error
+	if os.IsNotExist(err) {
 		tableName = files.SSTTableFileName(c.dbname, fileNumber)
-		tableFile, err1 = c.fs.Open(tableName, os.O_RDONLY)
-		if err1 != nil {
-			n.t = nil
-			n.err = err
-			return nil, err
-		}
+		tableFile, err = c.fs.Open(tableName, os.O_RDONLY)
+	}
+	if err != nil {
+		n.t = nil
+		n.err = err
+		return nil, err
 	}
 	n.t, n.err = OpenTable(tableFile, c.blocks, c.options, fileNumber, fileSize)
 	return n.t, n.err
