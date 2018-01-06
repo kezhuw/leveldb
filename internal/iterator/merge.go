@@ -111,7 +111,6 @@ func (m *mergeIterator) Next() bool {
 		m.current, m.index = m.findSmallest()
 		return m.Valid()
 	}
-	return false
 }
 
 func (m *mergeIterator) Prev() bool {
@@ -141,7 +140,6 @@ func (m *mergeIterator) Prev() bool {
 		m.current, m.index = m.findLargest()
 		return m.Valid()
 	}
-	return false
 }
 
 func (m *mergeIterator) Valid() bool {
