@@ -180,7 +180,6 @@ func (m *mergeIterator) forward() error {
 	// * For valid iterator, its current entry must point at or before key.
 	//   Its next entry, if any, must point at or after key.
 	// * For invalid iterator, its first entry, if any, must point at or after key.
-	key := m.current.Key()
 	i, n := 0, cap(m.iterators)
 	iterators := m.iterators[:n]
 	for i < n {
@@ -192,9 +191,7 @@ func (m *mergeIterator) forward() error {
 				goto skipInvalid
 			}
 		default:
-			// We keep iterator that has same key with current,
-			// since it is not consumed by client.
-			if m.cmp.Compare(it.Key(), key) < 0 && !it.Next() {
+			if !it.Next() {
 				goto skipInvalid
 			}
 		}
@@ -217,7 +214,6 @@ func (m *mergeIterator) reverse() error {
 	// * For valid iterator, its current entry must point at or after key.
 	//   Its previous entry, if any, must point at or before key.
 	// * For invalid iterator, its last entry, if any, must point at or before key.
-	key := m.current.Key()
 	i, n := 0, cap(m.iterators)
 	iterators := m.iterators[:n]
 	for i < n {
@@ -229,9 +225,7 @@ func (m *mergeIterator) reverse() error {
 				goto skipInvalid
 			}
 		default:
-			// We keep iterator that has same key with current,
-			// since it is not consumed by client.
-			if m.cmp.Compare(it.Key(), key) > 0 && !it.Prev() {
+			if !it.Prev() {
 				goto skipInvalid
 			}
 		}
