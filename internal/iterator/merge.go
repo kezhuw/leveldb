@@ -181,8 +181,8 @@ func (m *mergeIterator) forward() error {
 	//   Its next entry, if any, must point at or after key.
 	// * For invalid iterator, its first entry, if any, must point at or after key.
 	key := m.current.Key()
-	iterators := m.iterators
-	i, n := 0, cap(iterators)
+	i, n := 0, cap(m.iterators)
+	iterators := m.iterators[:n]
 	for i < n {
 		it := iterators[i]
 		switch {
@@ -218,8 +218,8 @@ func (m *mergeIterator) reverse() error {
 	//   Its previous entry, if any, must point at or before key.
 	// * For invalid iterator, its last entry, if any, must point at or before key.
 	key := m.current.Key()
-	iterators := m.iterators
-	i, n := 0, cap(iterators)
+	i, n := 0, cap(m.iterators)
+	iterators := m.iterators[:n]
 	for i < n {
 		it := iterators[i]
 		switch {
