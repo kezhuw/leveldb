@@ -290,6 +290,10 @@ func (m *mergeIterator) findLargest() (Iterator, int) {
 	return current, index
 }
 
+// NewMergeIterator creates a iterator merging all entries from iterators.
+// The resulting iterator implements semantics the exported Iterator interface
+// defines. This means that if Next/Prev is the first seek method called, they
+// act as First/Last respectively.
 func NewMergeIterator(cmp keys.Comparer, iterators ...Iterator) Iterator {
 	n := len(iterators)
 	return &mergeIterator{cmp: cmp, iterators: iterators[:n:n]}

@@ -119,6 +119,11 @@ func (it *rangeIterator) Release() error {
 	return it.iter.Release()
 }
 
+// NewRangeIterator creates a range iterator for keys in range [start, limit).
+// Nil or empty start or limit act as no limitation in corresponding end. The
+// resulting iterator implements semantics the exported Iterator interface
+// defines. This means that if Next/Prev is the first seek method called, they
+// act as First/Last respectively.
 func NewRangeIterator(start, limit []byte, cmp keys.Comparer, it Iterator) Iterator {
 	switch {
 	case len(start) == 0 && len(limit) == 0:

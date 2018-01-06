@@ -18,6 +18,12 @@ func (*emptyIterator) Release() error { return nil }
 
 var empty = (*emptyIterator)(nil)
 
+// Empty returns an empty iterator.
+//
+// This empty iterator has following properties:
+// * First/Last/Seek/Valid return false.
+// * Next/Prev/Key/Value panic.
+// * Err/Release return nil.
 func Empty() Iterator {
 	return empty
 }
