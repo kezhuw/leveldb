@@ -126,6 +126,7 @@ func (m *mergeIterator) Prev() bool {
 			m.current = nil
 			return false
 		}
+		fallthrough
 	default:
 		if !m.current.Prev() {
 			if err := m.current.Err(); err != nil {
