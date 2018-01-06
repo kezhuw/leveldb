@@ -7,8 +7,13 @@ type mergeIterator struct {
 	seeked    bool
 	err       error
 	direction Direction
-	index     int
+	index     int // index of current iterator in iterators
 	current   Iterator
+	// During iteration, iterators are split to two categories: valid ones
+	// and invalid ones. All iterators which reach their ends in iteration
+	// order are considered invalid and store at indices from len(iterators)-1
+	// to cap(iterators)-1. All valid iterators except current one point to
+	// entries behind current key and hence untouched by caller.
 	iterators []Iterator
 }
 
