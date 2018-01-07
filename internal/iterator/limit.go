@@ -35,7 +35,7 @@ func (it *limitIterator) Last() bool {
 			}
 		}
 	case it.iter.Last():
-		// There are two reasons to fall in this case statment:
+		// There are two reasons to fall in this case statement:
 		// * Iterator has no elements greater than or equal to limit.
 		// * Error happens in seeking. In this case, possibility exists
 		//   that the last element exceed limit. So we iterate backward
