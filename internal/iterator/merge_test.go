@@ -61,13 +61,13 @@ var mergeIteratorIterationTests = []mergeIteratorIterationTest{
 		seeks: []string{"A", "a", "d", "x"},
 		merges: []iterationSlice{
 			{
-				{key: "a"},
-				{key: "d"},
+				{key: "a", value: "av"},
+				{key: "d", value: "dv"},
 			},
 			{
-				{key: "b"},
-				{key: "f"},
-				{key: "k"},
+				{key: "b", value: "bv"},
+				{key: "f", value: "fv"},
+				{key: "k", value: "kv"},
 			},
 		},
 	},
@@ -77,18 +77,18 @@ var mergeIteratorIterationTests = []mergeIteratorIterationTest{
 		seeks: []string{"A", "a", "b", "d", "k", "x"},
 		merges: []iterationSlice{
 			{
-				{key: "b"},
-				{key: "f"},
-				{key: "k"},
+				{key: "b", value: "bv"},
+				{key: "f", value: "fv"},
+				{key: "k", value: "kv"},
 			},
 			{
-				{key: "a"},
-				{key: "d"},
+				{key: "a", value: "av"},
+				{key: "d", value: "dv"},
 			},
 			{
-				{key: "b"},
-				{key: "c"},
-				{key: "g"},
+				{key: "b", value: "bv"},
+				{key: "c", value: "cv"},
+				{key: "g", value: "gv"},
 			},
 		},
 	},
@@ -98,21 +98,21 @@ var mergeIteratorIterationTests = []mergeIteratorIterationTest{
 		seeks: []string{"A", "a", "b", "d", "k", "x"},
 		merges: []iterationSlice{
 			{
-				{key: "b"},
-				{key: "c"},
-				{key: "g"},
+				{key: "b", value: "bv"},
+				{key: "c", value: "cv"},
+				{key: "g", value: "gv"},
 			},
 			{
-				{key: "e"},
+				{key: "e", value: "ev"},
 			},
 			{
-				{key: "b"},
-				{key: "f"},
-				{key: "k"},
+				{key: "b", value: "bv"},
+				{key: "f", value: "fv"},
+				{key: "k", value: "kv"},
 			},
 			{
-				{key: "a"},
-				{key: "d"},
+				{key: "a", value: "av"},
+				{key: "d", value: "dv"},
 			},
 		},
 	},
@@ -351,7 +351,7 @@ func TestMergeIteratorSeek(t *testing.T) {
 				if !mergeIt.Seek([]byte(s)) {
 					t.Errorf("test=%d-%d-2nd seek=%q got=nil want=%q", i, j, s, test.merged[k].key)
 				}
-				entries = append(entries, iterationEntry{key: string(mergeIt.Key())})
+				entries = append(entries, iterationEntry{key: string(mergeIt.Key()), value: string(mergeIt.Value())})
 				entries = appendForward(entries, mergeIt, 0)
 				if !matchEntries(test.merged, entries) {
 					t.Errorf("test=%d-%d seek=%q got=%v want=%v", i, j, s, entries, test.merged)
@@ -392,7 +392,7 @@ func TestMergeIteratorReversePrev(t *testing.T) {
 				continue
 			}
 			backwards := appendBackward(nil, mergeIt, next)
-			forwards := []iterationEntry{{key: string(mergeIt.Key())}}
+			forwards := []iterationEntry{{key: string(mergeIt.Key()), value: string(mergeIt.Value())}}
 			forwards = appendForward(forwards, mergeIt, 0)
 			if !matchEntries(forwards, backwards) {
 				t.Errorf("test=%d-%d next=%d got=%v want=%v", i, j, next, backwards, forwards)
