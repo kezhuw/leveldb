@@ -94,7 +94,7 @@ func (s *State) AddLiveFiles(files map[uint64]struct{}) {
 func (s *State) AddLiveTables(tables map[uint64]struct{}) {
 	s.versionsMu.Lock()
 	defer s.versionsMu.Unlock()
-	for v, _ := range s.versions {
+	for v := range s.versions {
 		v.addLiveTables(tables)
 	}
 }
@@ -294,7 +294,7 @@ func Create(dbname string, opts *options.Options) (state *State, err error) {
 		manifestVersion:       current,
 		manifestLogFileNumber: edit.LogNumber,
 		current:               current,
-		versions:              map[*Version]struct{}{current: struct{}{}},
+		versions:              map[*Version]struct{}{current: {}},
 		scratch:               record,
 		tableCache:            cache,
 	}, nil
@@ -346,7 +346,7 @@ func Recover(dbname string, opts *options.Options) (state *State, err error) {
 		manifestLogFileNumber: builder.LogNumber,
 		manifestVersion:       current,
 		current:               current,
-		versions:              map[*Version]struct{}{current: struct{}{}},
+		versions:              map[*Version]struct{}{current: {}},
 		scratch:               builder.Scratch,
 		tableCache:            cache,
 	}
