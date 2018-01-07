@@ -189,29 +189,27 @@ func (m *mergeIterator) forward() error {
 	iterators := m.iterators[:n]
 	for i < n {
 		it := iterators[i]
+		valid := it.Valid()
 		switch {
 		case it == m.current:
-		case !it.Valid():
-			if !it.First() {
-				goto skipInvalid
-			}
+			fallthrough
+		case valid && it.Next():
+			fallthrough
+		case !valid && it.First():
+			i++
 		default:
-			if !it.Next() {
-				goto skipInvalid
+			if err := it.Err(); err != nil {
+				return err
+			}
+			n--
+			iterators[n], iterators[i] = iterators[i], iterators[n]
+			if n == m.index {
+				m.index = i
 			}
 		}
-		i++
-		continue
-	skipInvalid:
-		if err := it.Err(); err != nil {
-			return err
-		}
-		n--
-		iterators[n], iterators[i] = iterators[i], iterators[n]
 	}
 	m.direction = Forward
 	m.iterators = iterators[:n]
-	m.index = m.locateCurrent()
 	return nil
 }
 
@@ -224,40 +222,28 @@ func (m *mergeIterator) reverse() error {
 	iterators := m.iterators[:n]
 	for i < n {
 		it := iterators[i]
+		valid := it.Valid()
 		switch {
 		case it == m.current:
-		case !it.Valid():
-			if !it.Last() {
-				goto skipInvalid
-			}
+			fallthrough
+		case valid && it.Prev():
+			fallthrough
+		case !valid && it.Last():
+			i++
 		default:
-			if !it.Prev() {
-				goto skipInvalid
+			if err := it.Err(); err != nil {
+				return err
+			}
+			n--
+			iterators[n], iterators[i] = iterators[i], iterators[n]
+			if n == m.index {
+				m.index = i
 			}
 		}
-		i++
-		continue
-	skipInvalid:
-		if err := it.Err(); err != nil {
-			return err
-		}
-		n--
-		iterators[n], iterators[i] = iterators[i], iterators[n]
 	}
 	m.direction = Reverse
 	m.iterators = iterators[:n]
-	m.index = m.locateCurrent()
 	return nil
-}
-
-func (m *mergeIterator) locateCurrent() int {
-	current := m.current
-	for i, it := range m.iterators {
-		if it == current {
-			return i
-		}
-	}
-	return -1
 }
 
 func (m *mergeIterator) findSmallest() (Iterator, int) {
