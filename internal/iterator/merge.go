@@ -211,6 +211,7 @@ func (m *mergeIterator) forward() error {
 	}
 	m.direction = Forward
 	m.iterators = iterators[:n]
+	m.index = m.locateCurrent()
 	return nil
 }
 
@@ -245,7 +246,18 @@ func (m *mergeIterator) reverse() error {
 	}
 	m.direction = Reverse
 	m.iterators = iterators[:n]
+	m.index = m.locateCurrent()
 	return nil
+}
+
+func (m *mergeIterator) locateCurrent() int {
+	current := m.current
+	for i, it := range m.iterators {
+		if it == current {
+			return i
+		}
+	}
+	return -1
 }
 
 func (m *mergeIterator) findSmallest() (Iterator, int) {
