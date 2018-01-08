@@ -132,8 +132,6 @@ func NewRangeIterator(start, limit []byte, cmp keys.Comparer, it Iterator) Itera
 		return newStartIterator(start, cmp, it)
 	case len(start) == 0:
 		return newLimitIterator(limit, cmp, it)
-	case cmp.Compare(start, limit) >= 0:
-		return empty
 	}
 	return &rangeIterator{cmp: cmp, iter: it, start: start, limit: limit}
 }
