@@ -391,7 +391,7 @@ func TestMergeIteratorReleased(t *testing.T) {
 		for j, it := range iterators {
 			sliceIt := it.(*sliceIterator)
 			if released := sliceIt.released(); !released {
-				t.Errorf("test=%d-%d got=%t want=%t", i, j, released, true)
+				t.Errorf("test=%d-%d-released got=%t want=%t", i, j, released, true)
 			}
 		}
 	}
