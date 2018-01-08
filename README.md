@@ -1,8 +1,9 @@
 # LevelDB implementation in pure Go
 This is a LevelDB implementation, written in pure Go.
 
-[![GoDoc](https://godoc.org/github.com/kezhuw/leveldb?status.svg)](http://godoc.org/github.com/kezhuw/leveldb)
 [![Build Status](https://travis-ci.org/kezhuw/leveldb.svg?branch=master)](https://travis-ci.org/kezhuw/leveldb)
+[![Go Report Card](https://goreportcard.com/badge/github.com/kezhuw/leveldb)](https://goreportcard.com/report/github.com/kezhuw/leveldb)
+[![GoDoc](https://godoc.org/github.com/kezhuw/leveldb?status.svg)](http://godoc.org/github.com/kezhuw/leveldb)
 
 **This project is in early stage of development, and should not be considered as stable. Don't use it in production!**
 
