@@ -44,23 +44,23 @@ func (entry iterationEntry) Equal(other iterationEntry) bool {
 	return entry.key == other.key && entry.value == other.value
 }
 
-type entryIterator struct {
+type sliceIterator struct {
 	index   int
 	entries []iterationEntry
 }
 
 func newSliceIterator(entries []iterationEntry) iterator.Iterator {
-	return &entryIterator{
+	return &sliceIterator{
 		entries: entries,
 	}
 }
 
-func (it *entryIterator) Valid() bool {
+func (it *sliceIterator) Valid() bool {
 	i, n := it.index, len(it.entries)
 	return i >= 1 && i <= n && it.entries[i-1].err == nil
 }
 
-func (it *entryIterator) Err() error {
+func (it *sliceIterator) Err() error {
 	i, n := it.index, len(it.entries)
 	if i >= 1 && i <= n {
 		return it.entries[i-1].err
@@ -68,26 +68,33 @@ func (it *entryIterator) Err() error {
 	return nil
 }
 
-func (it *entryIterator) Release() error {
+func (it *sliceIterator) Release() error {
+	it.entries = nil
 	return nil
 }
 
-func (it *entryIterator) First() bool {
+func (it *sliceIterator) released() bool {
+	return it.entries == nil
+}
+
+func (it *sliceIterator) First() bool {
 	it.index = 1
 	return it.Valid()
 }
 
-func (it *entryIterator) Last() bool {
+func (it *sliceIterator) Last() bool {
 	it.index = len(it.entries)
 	return it.Valid()
 }
 
-func (it *entryIterator) Next() bool {
-	it.index++
+func (it *sliceIterator) Next() bool {
+	if it.index >= 0 {
+		it.index++
+	}
 	return it.Valid()
 }
 
-func (it *entryIterator) Prev() bool {
+func (it *sliceIterator) Prev() bool {
 	switch it.index {
 	case 0:
 		return it.Last()
@@ -99,21 +106,21 @@ func (it *entryIterator) Prev() bool {
 	return it.Valid()
 }
 
-func (it *entryIterator) Key() []byte {
+func (it *sliceIterator) Key() []byte {
 	if it.Valid() {
 		return []byte(it.entries[it.index-1].key)
 	}
 	panic("invalid iterator")
 }
 
-func (it *entryIterator) Value() []byte {
+func (it *sliceIterator) Value() []byte {
 	if it.Valid() {
 		return []byte(it.entries[it.index-1].value)
 	}
 	panic("invalid iterator")
 }
 
-func (it *entryIterator) Seek(key []byte) bool {
+func (it *sliceIterator) Seek(key []byte) bool {
 	i := sort.Search(len(it.entries), func(i int) bool {
 		return strings.Compare(it.entries[i].key, string(key)) >= 0
 	})
@@ -121,4 +128,4 @@ func (it *entryIterator) Seek(key []byte) bool {
 	return it.Valid()
 }
 
-var _ iterator.Iterator = (*entryIterator)(nil)
+var _ iterator.Iterator = (*sliceIterator)(nil)

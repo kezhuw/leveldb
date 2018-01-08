@@ -30,11 +30,16 @@ type mergeIteratorIterationTest struct {
 	merged []iterationEntry
 }
 
-func buildMergeIterator(merges []iterationSlice) iterator.Iterator {
+func buildSliceIterators(merges []iterationSlice) []iterator.Iterator {
 	iterators := make([]iterator.Iterator, 0, len(merges))
 	for _, slice := range merges {
 		iterators = append(iterators, newSliceIterator(slice))
 	}
+	return iterators
+}
+
+func buildMergeIterator(merges []iterationSlice) iterator.Iterator {
+	iterators := buildSliceIterators(merges)
 	return iterator.NewMergeIterator(keys.BytewiseComparator, iterators...)
 }
 
@@ -416,6 +421,26 @@ func TestMergeIteratorError(t *testing.T) {
 			}
 			if err := mergeIt.Err(); err != e.err {
 				t.Errorf("test=%d-%d direction=%s offset=%d got=%q want=%q", i, j, direction, e.off, err, e.err)
+			}
+		}
+	}
+}
+
+func TestMergeIteratorReleased(t *testing.T) {
+	for i, test := range mergeIteratorIterationTests {
+		iterators := buildSliceIterators(test.merges)
+		mergeIt := iterator.NewMergeIterator(keys.BytewiseComparator, iterators...)
+		for j, it := range iterators {
+			sliceIt := it.(*sliceIterator)
+			if released := sliceIt.released(); released {
+				t.Errorf("test=%d-%d got=%t want=%t", i, j, released, false)
+			}
+		}
+		mergeIt.Release()
+		for j, it := range iterators {
+			sliceIt := it.(*sliceIterator)
+			if released := sliceIt.released(); !released {
+				t.Errorf("test=%d-%d got=%t want=%t", i, j, released, true)
 			}
 		}
 	}
