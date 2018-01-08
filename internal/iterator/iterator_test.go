@@ -1,6 +1,7 @@
 package iterator_test
 
 import (
+	"math"
 	"sort"
 	"strings"
 
@@ -129,3 +130,51 @@ func (it *sliceIterator) Seek(key []byte) bool {
 }
 
 var _ iterator.Iterator = (*sliceIterator)(nil)
+
+func matchEntries(entries []iterationEntry, others []iterationEntry) bool {
+	n := len(entries)
+	if n != len(others) {
+		return false
+	}
+	for i, e := range entries {
+		if !e.Equal(others[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func appendForward(entries []iterationEntry, it iterator.Iterator, n int) []iterationEntry {
+	if n <= 0 {
+		n = math.MaxInt32
+	}
+	for n > 0 && it.Next() {
+		entries = append(entries, iterationEntry{
+			key:   string(it.Key()),
+			value: string(it.Value()),
+		})
+		n--
+	}
+	return entries
+}
+
+func appendBackward(entries []iterationEntry, it iterator.Iterator, n int) []iterationEntry {
+	if n <= 0 {
+		n = math.MaxInt32
+	}
+	i := len(entries)
+	for n > 0 && it.Prev() {
+		entries = append(entries, iterationEntry{
+			key:   string(it.Key()),
+			value: string(it.Value()),
+		})
+		n--
+	}
+	reverseds := entries[i:]
+	for len(reverseds) >= 2 {
+		last := len(reverseds) - 1
+		reverseds[0], reverseds[last] = reverseds[last], reverseds[0]
+		reverseds = reverseds[1:last]
+	}
+	return entries
+}
