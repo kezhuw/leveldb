@@ -27,7 +27,7 @@ func (it *startIterator) checkStart(valid bool) bool {
 
 func (it *startIterator) Last() bool {
 	it.seeked = true
-	return it.checkStart(it.Last())
+	return it.checkStart(it.iter.Last())
 }
 
 func (it *startIterator) Next() bool {
