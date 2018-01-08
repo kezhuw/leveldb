@@ -4,7 +4,7 @@ set -e
 echo "" > coverage.txt
 
 for d in $(go list ./... | grep -v vendor); do
-    go test -race -coverprofile=coverage.out -covermode=atomic $d
+    go test -race -coverprofile=coverage.out -covermode=atomic -coverpkg=./... $d
     if [ -f coverage.out ]; then
         cat coverage.out >> coverage.txt
         rm coverage.out
