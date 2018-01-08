@@ -168,11 +168,10 @@ func (m *mergeIterator) Err() error {
 func (m *mergeIterator) Release() error {
 	err := m.err
 	m.iterators = m.iterators[:cap(m.iterators)]
-	for i, it := range m.iterators {
+	for _, it := range m.iterators {
 		if err1 := it.Release(); err1 != nil && err == nil {
 			err = err1
 		}
-		m.iterators[i] = nil
 	}
 	m.err = err
 	m.current = nil
@@ -290,5 +289,6 @@ func (m *mergeIterator) findLargest() (Iterator, int) {
 // different iterations.
 func NewMergeIterator(cmp keys.Comparer, iterators ...Iterator) Iterator {
 	n := len(iterators)
+	iterators = append([]Iterator(nil), iterators...)
 	return &mergeIterator{cmp: cmp, iterators: iterators[:n:n]}
 }
