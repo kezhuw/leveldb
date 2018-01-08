@@ -3,6 +3,7 @@ This is a LevelDB implementation, written in pure Go.
 
 [![Build Status](https://travis-ci.org/kezhuw/leveldb.svg?branch=master)](https://travis-ci.org/kezhuw/leveldb)
 [![Go Report Card](https://goreportcard.com/badge/github.com/kezhuw/leveldb)](https://goreportcard.com/report/github.com/kezhuw/leveldb)
+[![codecov](https://codecov.io/gh/kezhuw/leveldb/branch/master/graph/badge.svg)](https://codecov.io/gh/kezhuw/leveldb)
 [![GoDoc](https://godoc.org/github.com/kezhuw/leveldb?status.svg)](http://godoc.org/github.com/kezhuw/leveldb)
 
 **This project is in early stage of development, and should not be considered as stable. Don't use it in production!**
