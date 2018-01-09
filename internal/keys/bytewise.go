@@ -2,7 +2,9 @@ package keys
 
 import (
 	"bytes"
-	"fmt"
+
+	"github.com/kezhuw/leveldb/internal/errors"
+	"github.com/kezhuw/leveldb/internal/util"
 )
 
 type bytewiseComparator struct{}
@@ -37,7 +39,7 @@ func (bytewiseComparator) AppendSuccessor(dst, start, limit []byte) []byte {
 		case i == len(start): // start is a prefix of limit
 			return dst
 		case i == len(limit) || start[i] > limit[i]:
-			panic(fmt.Sprintf("leveldb: BytewiseComparator.AppendSuccessor: limit[%v] is less than start[%v]", limit, start))
+			panic(&errors.KeyRangeError{Start: util.DupBytes(start), Limit: util.DupBytes(limit)})
 		case start[i]+1 < limit[i]: // `start[i]+1` will not overflow one byte, because start[i] is less than some value of one byte.
 			n += i
 			dst[n] = start[i] + 1

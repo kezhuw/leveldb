@@ -19,6 +19,16 @@ var (
 	ErrSnapshotReleased   = errors.New("leveldb: snapshot released")
 )
 
+// KeyRangeError represents invalid key range, eg. invalid [start, limit) interval.
+type KeyRangeError struct {
+	Start []byte
+	Limit []byte
+}
+
+func (e *KeyRangeError) Error() string {
+	return fmt.Sprintf("leveldb: invalid key range start=%v limit=%v", e.Start, e.Limit)
+}
+
 type CorruptionError struct {
 	Err        error
 	Offset     int64
