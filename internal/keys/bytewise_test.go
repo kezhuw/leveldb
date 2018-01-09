@@ -23,13 +23,7 @@ func TestByteWiseComparatorName(t *testing.T) {
 	}
 }
 
-type bytewiseCompareTest struct {
-	a []byte
-	b []byte
-	r int
-}
-
-var bytewiseCompareTests = []bytewiseCompareTest{
+var bytewiseCompareTests = []comparatorCompareTest{
 	{
 		a: []byte("aaaaaa"),
 		b: []byte("aaaaaa"),
@@ -62,13 +56,7 @@ func TestBytewiseComparatorCompare(t *testing.T) {
 	}
 }
 
-type bytewiseComparatorSuccessorTest struct {
-	start     []byte
-	limit     []byte
-	successor []byte
-}
-
-var bytewiseComparatorSuccessorTests = []bytewiseComparatorSuccessorTest{
+var bytewiseComparatorSuccessorTests = []comparatorSuccessorTest{
 	{
 		start:     []byte("aaaaaa"),
 		limit:     []byte("aaaaaa"),
@@ -129,12 +117,7 @@ func TestBytewiseComparatorAppendSuccessor(t *testing.T) {
 	}
 }
 
-type bytewisePrefixSuccessorTest struct {
-	prefix    []byte
-	successor []byte
-}
-
-var bytewisePrefixSuccessorTests = []bytewisePrefixSuccessorTest{
+var bytewisePrefixSuccessorTests = []comparatorPrefixSuccessorTest{
 	{
 		prefix:    []byte("aabbccdd"),
 		successor: []byte("aabbccde"),
@@ -159,7 +142,7 @@ func TestBytewiseComparatorPrefixSuccessor(t *testing.T) {
 	}
 }
 
-func testKeyRangeError(t *testing.T, i int, comparator keys.Comparator, test *bytewiseComparatorSuccessorTest) {
+func testKeyRangeError(t *testing.T, i int, comparator keys.Comparator, test *comparatorSuccessorTest) {
 	if len(test.limit) != 0 && comparator.Compare(test.start, test.limit) != 0 {
 		start, limit := test.limit, test.start
 		defer func() {
