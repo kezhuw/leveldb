@@ -1,7 +1,6 @@
 package leveldb
 
 import (
-	"reflect"
 	"unsafe"
 
 	"github.com/kezhuw/leveldb/internal/compress"
@@ -10,7 +9,6 @@ import (
 	"github.com/kezhuw/leveldb/internal/keys"
 	"github.com/kezhuw/leveldb/internal/logger"
 	"github.com/kezhuw/leveldb/internal/options"
-	"github.com/kezhuw/leveldb/internal/util"
 )
 
 // CompressionType defines compression methods to compress a table block.
@@ -125,11 +123,11 @@ func (opts *Options) getFileSystem() file.FileSystem {
 	return wrappedFileSystem{opts.FileSystem}
 }
 
-func (opts *Options) getComparator() keys.UserComparator {
-	if opts.Comparator == nil {
-		return keys.BytewiseComparator
+func (opts *Options) getComparator() *keys.InternalComparator {
+	if opts.Comparator == nil || opts.Comparator == keys.BytewiseComparator {
+		return &options.DefaultInternalComparator
 	}
-	return opts.Comparator
+	return &keys.InternalComparator{UserKeyComparator: opts.Comparator}
 }
 
 func (opts *Options) getCompression() compress.Type {
@@ -142,17 +140,58 @@ func (opts *Options) getCompression() compress.Type {
 	return options.DefaultCompression
 }
 
+func (opts *Options) getBlockSize() int {
+	if opts.BlockSize <= 0 {
+		return options.DefaultBlockSize
+	}
+	return opts.BlockSize
+}
+
+func (opts *Options) getBlockRestartInterval() int {
+	if opts.BlockRestartInterval <= 0 {
+		return options.DefaultBlockRestartInterval
+	}
+	return opts.BlockRestartInterval
+}
+
+func (opts *Options) getWriteBufferSize() int {
+	if opts.WriteBufferSize <= 0 {
+		return options.DefaultWriteBufferSize
+	}
+	return opts.WriteBufferSize
+}
+
+func (opts *Options) getMaxOpenFiles() int {
+	if opts.MaxOpenFiles <= 0 {
+		return options.DefaultMaxOpenFiles
+	}
+	return opts.MaxOpenFiles
+}
+
+func (opts *Options) getBlockCacheCapacity() int {
+	if opts.BlockCacheCapacity <= 0 {
+		return options.DefaultBlockCacheCapacity
+	}
+	return opts.BlockCacheCapacity
+}
+
 func convertOptions(opts *Options) *options.Options {
 	if opts == nil {
 		return &options.DefaultOptions
 	}
 	var iopts options.Options
-	iopts.SetDefaults(reflect.ValueOf(opts))
-	iopts.Comparator = &keys.InternalComparator{opts.getComparator()}
+	iopts.Comparator = opts.getComparator()
 	iopts.Compression = opts.getCompression()
+	iopts.BlockSize = opts.getBlockSize()
+	iopts.BlockRestartInterval = opts.getBlockRestartInterval()
+	iopts.WriteBufferSize = opts.getWriteBufferSize()
+	iopts.MaxOpenFiles = opts.getMaxOpenFiles()
+	iopts.BlockCacheCapacity = opts.getBlockCacheCapacity()
 	iopts.Filter = opts.getFilter()
 	iopts.Logger = opts.getLogger()
 	iopts.FileSystem = opts.getFileSystem()
+	iopts.CreateIfMissing = opts.CreateIfMissing
+	iopts.ErrorIfExists = opts.ErrorIfExists
 	return &iopts
 }
 
@@ -200,13 +239,4 @@ func convertWriteOptions(opts *WriteOptions) *options.WriteOptions {
 		return &options.DefaultWriteOptions
 	}
 	return (*options.WriteOptions)(unsafe.Pointer(opts))
-}
-
-func init() {
-	if !util.SameLayoutStructs(reflect.TypeOf(ReadOptions{}), reflect.TypeOf(options.ReadOptions{})) {
-		panic("leveldb: layout of ReadOptions differs from internalFilter one")
-	}
-	if !util.SameLayoutStructs(reflect.TypeOf(WriteOptions{}), reflect.TypeOf(options.WriteOptions{})) {
-		panic("leveldb: layout of WriteOptions differs from internal one")
-	}
 }
