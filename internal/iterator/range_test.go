@@ -21,7 +21,6 @@ type rangeIteratorTest struct {
 
 var rangeIteratorTests = []rangeIteratorTest{
 	{
-		entries: []iterationEntry{},
 		ranges: []rangeIteratorRange{
 			{},
 			{seek: "a", limit: "a"},

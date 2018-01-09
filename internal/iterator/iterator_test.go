@@ -56,7 +56,12 @@ type sliceIterator struct {
 	entries []iterationEntry
 }
 
+var emptyEntries = []iterationEntry{}
+
 func newSliceIterator(entries []iterationEntry) iterator.Iterator {
+	if entries == nil {
+		entries = emptyEntries
+	}
 	return &sliceIterator{
 		entries: entries,
 	}

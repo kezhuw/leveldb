@@ -11,9 +11,7 @@ type nextIteratorTest struct {
 }
 
 var nextIteratorTests = []nextIteratorTest{
-	{
-		entries: []iterationEntry{},
-	},
+	{},
 	{
 		entries: []iterationEntry{
 			{key: "b"},
