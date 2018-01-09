@@ -15,8 +15,12 @@ import (
 type CompressionType int
 
 const (
-	DefaultCompression CompressionType = iota // Points to SnappyCompression
+	// DefaultCompression defaults to SnappyCompression for now.
+	DefaultCompression CompressionType = iota
+	// NoCompression means no compression for table block.
 	NoCompression
+	// SnappyCompression uses snappy compression to compress table block
+	// before store it to file.
 	SnappyCompression
 )
 
