@@ -1,17 +1,11 @@
 package iterator_test
 
 import (
-	"errors"
 	"sort"
 	"testing"
 
 	"github.com/kezhuw/leveldb/internal/iterator"
 	"github.com/kezhuw/leveldb/internal/keys"
-)
-
-var (
-	error1 = errors.New("error1")
-	error2 = errors.New("error2")
 )
 
 type iterationError struct {
@@ -147,23 +141,23 @@ var mergeIteratorIterationTests = []mergeIteratorIterationTest{
 		errors: []iterationError{
 			{
 				off: 1,
-				err: error1,
+				err: errFoo,
 			},
 			{
 				off: -3,
-				err: error2,
+				err: errBar,
 			},
 		},
 		merges: []iterationSlice{
 			{
-				{key: "a", err: error1},
+				{key: "a", err: errFoo},
 				{key: "b"},
 			},
 			{
 				{key: "c"},
 			},
 			{
-				{key: "f", err: error2},
+				{key: "f", err: errBar},
 				{key: "g"},
 				{key: "k"},
 			},
@@ -173,11 +167,11 @@ var mergeIteratorIterationTests = []mergeIteratorIterationTest{
 		errors: []iterationError{
 			{
 				off: 4,
-				err: error1,
+				err: errFoo,
 			},
 			{
 				off: -5,
-				err: error1,
+				err: errFoo,
 			},
 		},
 		merges: []iterationSlice{
@@ -189,7 +183,7 @@ var mergeIteratorIterationTests = []mergeIteratorIterationTest{
 			},
 			{
 				{key: "e"},
-				{key: "f", err: error1},
+				{key: "f", err: errFoo},
 				{key: "h"},
 				{key: "i"},
 			},

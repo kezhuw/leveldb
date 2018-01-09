@@ -1,11 +1,17 @@
 package iterator_test
 
 import (
+	"errors"
 	"math"
 	"sort"
 	"strings"
 
 	"github.com/kezhuw/leveldb/internal/iterator"
+)
+
+var (
+	errFoo = errors.New("error foo")
+	errBar = errors.New("error bar")
 )
 
 type iterationEntry struct {
