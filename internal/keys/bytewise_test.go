@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/kezhuw/leveldb/internal/errors"
 	"github.com/kezhuw/leveldb/internal/keys"
 )
 
@@ -155,5 +156,25 @@ func TestBytewiseComparatorPrefixSuccessor(t *testing.T) {
 		if !bytes.Equal(got, test.successor) {
 			t.Errorf("test=%d prefix=%q got=%q want=%q", i, test.prefix, got, test.successor)
 		}
+	}
+}
+
+func testKeyRangeError(t *testing.T, i int, comparator keys.Comparator, test *bytewiseComparatorSuccessorTest) {
+	if len(test.limit) != 0 && comparator.Compare(test.start, test.limit) != 0 {
+		start, limit := test.limit, test.start
+		defer func() {
+			r := recover()
+			if _, ok := r.(*errors.KeyRangeError); !ok {
+				t.Errorf("test=%d start=%v limit=%v got=%v want=KeyRangeError", i, start, limit, r)
+			}
+		}()
+		comparator.AppendSuccessor(nil, start, limit)
+	}
+}
+
+func TestBytewiseComparatorKeyRangeError(t *testing.T) {
+	comparator := keys.BytewiseComparator
+	for i, test := range bytewiseComparatorSuccessorTests {
+		testKeyRangeError(t, i, comparator, &test)
 	}
 }
