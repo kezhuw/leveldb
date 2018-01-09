@@ -99,14 +99,14 @@ type Options struct {
 }
 
 func (opts *Options) getLogger() logger.LogCloser {
-	if opts == nil || opts.Logger == nil {
+	if opts.Logger == nil {
 		return nil
 	}
 	return logger.NopCloser(opts.Logger)
 }
 
 func (opts *Options) getFilter() filter.Filter {
-	if opts == nil || opts.Filter == nil {
+	if opts.Filter == nil {
 		return nil
 	}
 	if f, ok := opts.Filter.(internalFilter); ok {
@@ -116,7 +116,7 @@ func (opts *Options) getFilter() filter.Filter {
 }
 
 func (opts *Options) getFileSystem() file.FileSystem {
-	if opts == nil || opts.FileSystem == nil {
+	if opts.FileSystem == nil {
 		return file.DefaultFileSystem
 	}
 	if fs, ok := opts.FileSystem.(internalFileSystem); ok {
@@ -126,16 +126,13 @@ func (opts *Options) getFileSystem() file.FileSystem {
 }
 
 func (opts *Options) getComparator() keys.UserComparator {
-	if opts == nil || opts.Comparator == nil {
+	if opts.Comparator == nil {
 		return keys.BytewiseComparator
 	}
 	return opts.Comparator
 }
 
 func (opts *Options) getCompression() compress.Type {
-	if opts == nil {
-		return options.DefaultCompression
-	}
 	switch opts.Compression {
 	case NoCompression:
 		return compress.NoCompression
@@ -203,13 +200,6 @@ func convertWriteOptions(opts *WriteOptions) *options.WriteOptions {
 		return &options.DefaultWriteOptions
 	}
 	return (*options.WriteOptions)(unsafe.Pointer(opts))
-}
-
-func (opts *WriteOptions) getSync() bool {
-	if opts == nil {
-		return false
-	}
-	return opts.Sync
 }
 
 func init() {
