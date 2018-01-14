@@ -799,6 +799,7 @@ func recoverDB(dbname string, locker io.Closer, opts *options.Options) (db *DB, 
 	logNumber := state.LogFileNumber()
 	var logs []uint64
 	tables := make(map[uint64]struct{})
+	state.AddLiveFiles(tables)
 	for _, filename := range filenames {
 		kind, number := files.Parse(filename)
 		switch kind {
