@@ -13,7 +13,7 @@ import (
 type fileIterator struct {
 	icmp    keys.Comparator
 	opts    *options.ReadOptions
-	files   []FileMeta
+	files   FileList
 	cache   *table.Cache
 	index   int
 	scratch [16]byte
@@ -77,7 +77,7 @@ func (it *fileIterator) Release() error {
 	return nil
 }
 
-func newSortedFileIterator(icmp keys.Comparator, files []FileMeta, cache *table.Cache, opts *options.ReadOptions) iterator.Iterator {
+func newSortedFileIterator(icmp keys.Comparator, files FileList, cache *table.Cache, opts *options.ReadOptions) iterator.Iterator {
 	n := len(files)
 	if n == 0 {
 		return iterator.Empty()

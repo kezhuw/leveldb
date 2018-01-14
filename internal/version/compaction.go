@@ -10,8 +10,8 @@ import (
 type Compaction struct {
 	Level              int
 	Base               *Version
-	Inputs             [2][]FileMeta
-	Grandparents       []FileMeta
+	Inputs             [2]FileList
+	Grandparents       FileList
 	MaxOutputFileSize  int64
 	NextCompactPointer keys.InternalKey
 }
@@ -38,5 +38,5 @@ func (c *Compaction) NewIterator() iterator.Iterator {
 }
 
 func (c *Compaction) IsTrivialMove() bool {
-	return len(c.Inputs[0]) == 1 && len(c.Inputs[1]) == 0 && totalFileSize(c.Grandparents) < configs.MaxGrandparentOverlappingBytes
+	return len(c.Inputs[0]) == 1 && len(c.Inputs[1]) == 0 && c.Grandparents.TotalFileSize() < configs.MaxGrandparentOverlappingBytes
 }

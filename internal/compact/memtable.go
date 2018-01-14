@@ -109,11 +109,12 @@ func (c *memtableCompaction) record(edit *version.Edit) {
 	if c.tableMeta.Size == 0 {
 		return
 	}
-	fmeta := version.FileMeta{
+	fmeta := &version.FileMeta{
 		Number:   c.tableMeta.Number,
 		Size:     c.tableMeta.Size,
 		Smallest: c.tableMeta.Smallest.Dup(),
-		Largest:  c.tableMeta.Largest.Dup()}
+		Largest:  c.tableMeta.Largest.Dup(),
+	}
 	level := c.base.PickLevelForMemTableOutput(fmeta.Smallest, fmeta.Largest)
 	if c.maxLevel > 0 && c.maxLevel < level {
 		level = c.maxLevel

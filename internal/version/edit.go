@@ -37,7 +37,7 @@ var (
 // LevelFileMeta includes a file's meta data and its corresponding level.
 type LevelFileMeta struct {
 	Level int
-	FileMeta
+	*FileMeta
 }
 
 type LevelFileNumber struct {
@@ -261,7 +261,7 @@ func (edit *Edit) decodeAddedFile(buf []byte) []byte {
 	if level > configs.NumberLevels {
 		panic(fmt.Errorf("too big level in new file: %d", level))
 	}
-	var file LevelFileMeta
+	file := LevelFileMeta{FileMeta: &FileMeta{}}
 	buf = edit.decodeUint64(buf, &file.Number, ErrCorruptEditNewFile)
 	buf = edit.decodeUint64(buf, &file.Size, ErrCorruptEditNewFile)
 	buf = edit.decodeBytes(buf, (*[]byte)(&file.Smallest), ErrCorruptEditNewFile)

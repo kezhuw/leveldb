@@ -43,7 +43,7 @@ type levelCompaction struct {
 
 	smallestSequence keys.Sequence
 
-	outputs []version.FileMeta
+	outputs version.FileList
 
 	tableName   string
 	tableMeta   version.FileMeta
@@ -119,11 +119,12 @@ func (c *levelCompaction) closeCurrentTable() error {
 	if err != nil {
 		return err
 	}
-	c.outputs = append(c.outputs, version.FileMeta{
+	c.outputs = append(c.outputs, &version.FileMeta{
 		Number:   c.tableMeta.Number,
 		Size:     uint64(c.tableWriter.FileSize()),
 		Smallest: c.tableMeta.Smallest.Dup(),
-		Largest:  c.tableMeta.Largest.Dup()})
+		Largest:  c.tableMeta.Largest.Dup(),
+	})
 	return nil
 }
 

@@ -19,7 +19,7 @@ type Version struct {
 	cache *table.Cache
 	// Levels[0], sorted from newest to oldest;
 	// Levels[n], sorted from smallest to largest.
-	Levels [configs.NumberLevels][]FileMeta
+	Levels [configs.NumberLevels]FileList
 
 	CompactionScore    float64
 	CompactionLevel    int
@@ -50,13 +50,10 @@ func (v *Version) String() string {
 }
 
 func (v *Version) SortFiles() error {
-	sort.Sort(byNewestFileMeta(v.Levels[0]))
-	var byKeys byFileKey
-	byKeys.cmp = v.icmp
+	v.Levels[0].SortByNewestFileNumber()
 	for level := 1; level < configs.NumberLevels; level++ {
 		files := v.Levels[level]
-		byKeys.files = files
-		sort.Sort(&byKeys)
+		files.SortBySmallestKey(v.icmp)
 		for i := 0; i < len(files)-1; i++ {
 			if v.icmp.Compare(files[i].Largest, files[i+1].Smallest) >= 0 {
 				return errors.ErrOverlappedTables
@@ -122,19 +119,12 @@ func (v *Version) Get(ikey keys.InternalKey, opts *options.ReadOptions) ([]byte,
 	return nil, errors.ErrNotFound
 }
 
-func totalFileSize(files []FileMeta) (size uint64) {
-	for _, f := range files {
-		size += f.Size
-	}
-	return
-}
-
 func (v *Version) computeCompactionScore() {
 	v.CompactionScore = float64(len(v.Levels[0])) / configs.L0CompactionFiles
 	v.CompactionLevel = 0
 	maxBytes := 10 * 1024 * 1024
 	for level := 1; level < len(v.Levels)-1; level++ {
-		score := float64(totalFileSize(v.Levels[level])) / float64(maxBytes)
+		score := float64(v.Levels[level].TotalFileSize()) / float64(maxBytes)
 		if score > v.CompactionScore {
 			v.CompactionScore = score
 			v.CompactionLevel = level
@@ -145,7 +135,7 @@ func (v *Version) computeCompactionScore() {
 type overlayer interface {
 	Start()
 	Done()
-	Overlap(f FileMeta)
+	Overlap(f *FileMeta)
 }
 
 type panicBoolOverlayer struct {
@@ -155,7 +145,7 @@ type panicBoolOverlayer struct {
 func (o *panicBoolOverlayer) Start() {
 }
 
-func (o *panicBoolOverlayer) Overlap(f FileMeta) {
+func (o *panicBoolOverlayer) Overlap(f *FileMeta) {
 	o.overlapped = true
 	panic(*o)
 }
@@ -172,7 +162,7 @@ func (o *sizeOverlayer) Start() {
 	o.total = o.start
 }
 
-func (o *sizeOverlayer) Overlap(f FileMeta) {
+func (o *sizeOverlayer) Overlap(f *FileMeta) {
 	o.total += int64(f.Size)
 }
 
@@ -182,14 +172,14 @@ func (o *sizeOverlayer) Done() {
 
 type fileOverlayer struct {
 	start int
-	files []FileMeta
+	files FileList
 }
 
 func (o *fileOverlayer) Start() {
 	o.files = o.files[:o.start]
 }
 
-func (o *fileOverlayer) Overlap(f FileMeta) {
+func (o *fileOverlayer) Overlap(f *FileMeta) {
 	o.files = append(o.files, f)
 }
 
@@ -259,7 +249,7 @@ func (v *Version) isOverlappingWithLevel(level int, smallest, largest keys.Inter
 	return b.overlapped
 }
 
-func (v *Version) appendOverlappingFiles(level int, smallest, largest keys.InternalKey, files []FileMeta) []FileMeta {
+func (v *Version) appendOverlappingFiles(level int, smallest, largest keys.InternalKey, files FileList) FileList {
 	var collector fileOverlayer
 	collector.start = len(files)
 	collector.files = files
@@ -267,7 +257,7 @@ func (v *Version) appendOverlappingFiles(level int, smallest, largest keys.Inter
 	return collector.files
 }
 
-func (v *Version) rangeOf(files []FileMeta) (smallest, largest keys.InternalKey) {
+func (v *Version) rangeOf(files FileList) (smallest, largest keys.InternalKey) {
 	smallest, largest = files[0].Smallest, files[0].Largest
 	for _, f := range files[1:] {
 		if v.icmp.Compare(f.Smallest, smallest) < 0 {
@@ -343,8 +333,8 @@ func (v *Version) pickCompaction() *Compaction {
 		if len(expandeds0) <= len(c.Inputs[0]) {
 			break
 		}
-		inputs1Size := totalFileSize(c.Inputs[1])
-		expandeds0Size := totalFileSize(expandeds0)
+		inputs1Size := c.Inputs[1].TotalFileSize()
+		expandeds0Size := expandeds0.TotalFileSize()
 		if expandeds0Size+inputs1Size >= configs.ExpandedCompactionLimitBytes {
 			break
 		}
@@ -419,7 +409,7 @@ func (v *Version) snapshot(edit *Edit) {
 func (v *Version) dup() *Version {
 	dup := &Version{icmp: v.icmp, cache: v.cache}
 	for level := 0; level < configs.NumberLevels; level++ {
-		dup.Levels[level] = append(dup.Levels[level], v.Levels[level]...)
+		dup.Levels[level] = v.Levels[level].Dup()
 	}
 	dup.CompactionPointers = v.CompactionPointers
 	dup.CompactionScore = v.CompactionScore
@@ -429,15 +419,10 @@ func (v *Version) dup() *Version {
 
 func (v *Version) apply(edit *Edit) error {
 	for _, deleted := range edit.DeletedFiles {
-		files := v.Levels[deleted.Level]
-		i := indexFile(files, deleted.Number)
-		if i == -1 {
+		ok := v.Levels[deleted.Level].DeleteFile(deleted.Number)
+		if !ok {
 			return fmt.Errorf("no file numbered %d in level %d", deleted.Number, deleted.Level)
 		}
-		n := len(files) - 1
-		files[i] = files[n]
-		files = files[:n]
-		v.Levels[deleted.Level] = files
 	}
 	for _, added := range edit.AddedFiles {
 		v.Levels[added.Level] = append(v.Levels[added.Level], added.FileMeta)
