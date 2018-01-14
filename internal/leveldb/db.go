@@ -245,6 +245,9 @@ func (db *DB) compactAndLog(c compact.Compactor, edit *version.Edit) {
 	for {
 		switch compacted {
 		case false:
+			if err != nil {
+				c.Rewind()
+			}
 			err = c.Compact(edit)
 			if err != nil {
 				db.options.Logger.Warnf("level %d compaction: fail to compact: %s", level, err)
