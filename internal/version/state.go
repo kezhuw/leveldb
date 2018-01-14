@@ -87,8 +87,9 @@ func (s *State) MarkFileNumberUsed(number uint64) {
 	}
 }
 
-func (s *State) AddLiveFiles(files map[uint64]struct{}) {
+func (s *State) AddLiveFiles(files map[uint64]struct{}) map[uint64]struct{} {
 	s.AddLiveTables(files)
+	return files
 }
 
 func (s *State) AddLiveTables(tables map[uint64]struct{}) {

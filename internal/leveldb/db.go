@@ -315,8 +315,7 @@ func (db *DB) removeObsoleteFiles(logNumber, manifestNumber uint64, done chan st
 	if done != nil {
 		defer close(done)
 	}
-	lives := make(map[uint64]struct{})
-	db.state.AddLiveFiles(lives)
+	lives := db.state.AddLiveFiles(make(map[uint64]struct{}))
 	filenames, _ := db.fs.List(db.name)
 	for _, name := range filenames {
 		kind, number := files.Parse(name)
@@ -798,8 +797,7 @@ func recoverDB(dbname string, locker io.Closer, opts *options.Options) (db *DB, 
 	}
 	logNumber := state.LogFileNumber()
 	var logs []uint64
-	tables := make(map[uint64]struct{})
-	state.AddLiveFiles(tables)
+	tables := state.AddLiveFiles(make(map[uint64]struct{}))
 	for _, filename := range filenames {
 		kind, number := files.Parse(filename)
 		switch kind {
