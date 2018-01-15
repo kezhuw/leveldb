@@ -249,7 +249,7 @@ func (v *Version) isOverlappingWithLevel(level int, smallest, largest keys.Inter
 	return b.overlapped
 }
 
-func (v *Version) appendOverlappingFiles(level int, smallest, largest keys.InternalKey, files FileList) FileList {
+func (v *Version) appendOverlappingFiles(files FileList, level int, smallest, largest keys.InternalKey) FileList {
 	var collector fileOverlayer
 	collector.start = len(files)
 	collector.files = files
@@ -302,11 +302,11 @@ search:
 	}
 	if level == 0 {
 		smallest, largest := inputs0[0].Smallest, inputs0[0].Largest
-		inputs0 = v.appendOverlappingFiles(0, smallest, largest, inputs0[:0])
+		inputs0 = v.appendOverlappingFiles(inputs0[:0], 0, smallest, largest)
 	}
 	smallest, largest = v.rangeOf(inputs0)
 	c.Inputs[0] = inputs0
-	c.Inputs[1] = v.appendOverlappingFiles(level+1, smallest, largest, c.Inputs[1][:0])
+	c.Inputs[1] = v.appendOverlappingFiles(c.Inputs[1][:0], level+1, smallest, largest)
 	return smallest, largest
 }
 
@@ -329,7 +329,7 @@ func (v *Version) pickCompaction() *Compaction {
 
 		// Try to expand the number of files in inputs[0], without changing the number
 		// of files in inputs[1].
-		expandeds0 := v.appendOverlappingFiles(c.Level, allSmallest, allLargest, nil)
+		expandeds0 := v.appendOverlappingFiles(nil, c.Level, allSmallest, allLargest)
 		if len(expandeds0) <= len(c.Inputs[0]) {
 			break
 		}
@@ -339,7 +339,7 @@ func (v *Version) pickCompaction() *Compaction {
 			break
 		}
 		newSmallest, newLargest := v.rangeOf(expandeds0)
-		expandeds1 := v.appendOverlappingFiles(c.Level+1, newSmallest, newLargest, nil)
+		expandeds1 := v.appendOverlappingFiles(nil, c.Level+1, newSmallest, newLargest)
 		if len(expandeds1) != len(c.Inputs[1]) {
 			break
 		}
@@ -351,7 +351,7 @@ func (v *Version) pickCompaction() *Compaction {
 	}
 
 	if grandparentsLevel := c.Level + 2; grandparentsLevel < configs.NumberLevels {
-		c.Grandparents = v.appendOverlappingFiles(grandparentsLevel, allSmallest, allLargest, c.Grandparents[:0])
+		c.Grandparents = v.appendOverlappingFiles(c.Grandparents[:0], grandparentsLevel, allSmallest, allLargest)
 	}
 	c.MaxOutputFileSize = configs.TargetFileSize
 	c.NextCompactPointer = largest
