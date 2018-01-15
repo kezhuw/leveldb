@@ -1,4 +1,4 @@
-package version
+package manifest
 
 import (
 	"fmt"
@@ -16,7 +16,7 @@ import (
 	"github.com/kezhuw/leveldb/internal/table"
 )
 
-type State struct {
+type Manifest struct {
 	dbname      string
 	currentName string
 	options     *options.Options
@@ -45,191 +45,191 @@ type State struct {
 	scratch []byte
 }
 
-func (s *State) Current() *Version {
-	return s.current
+func (m *Manifest) Current() *Version {
+	return m.current
 }
 
-func (s *State) LogFileNumber() uint64 {
-	return s.logFileNumber
+func (m *Manifest) LogFileNumber() uint64 {
+	return m.logFileNumber
 }
 
-func (s *State) LastSequence() keys.Sequence {
-	return s.lastSequence
+func (m *Manifest) LastSequence() keys.Sequence {
+	return m.lastSequence
 }
 
-func (s *State) SetLastSequence(seq keys.Sequence) {
-	s.lastSequence = seq
+func (m *Manifest) SetLastSequence(seq keys.Sequence) {
+	m.lastSequence = seq
 }
 
 // ManifestFileNumber returns current manifest number, possibly expired
 // due to switching to new manifest file.
-func (s *State) ManifestFileNumber() uint64 {
-	return s.manifestNumber
+func (m *Manifest) ManifestFileNumber() uint64 {
+	return m.manifestNumber
 }
 
 // NewFileNumber returns a new file number and a next file number.
-func (s *State) NewFileNumber() (uint64, uint64) {
-	next := atomic.AddUint64(&s.nextFileNumber, 1)
+func (m *Manifest) NewFileNumber() (uint64, uint64) {
+	next := atomic.AddUint64(&m.nextFileNumber, 1)
 	return next - 1, next
 }
 
-func (s *State) NextFileNumber() uint64 {
-	return atomic.LoadUint64(&s.nextFileNumber)
+func (m *Manifest) NextFileNumber() uint64 {
+	return atomic.LoadUint64(&m.nextFileNumber)
 }
 
-func (s *State) ReuseFileNumber(number uint64) {
-	atomic.CompareAndSwapUint64(&s.nextFileNumber, number+1, number)
+func (m *Manifest) ReuseFileNumber(number uint64) {
+	atomic.CompareAndSwapUint64(&m.nextFileNumber, number+1, number)
 }
 
-func (s *State) MarkFileNumberUsed(number uint64) {
-	if s.nextFileNumber <= number {
-		s.nextFileNumber = number + 1
+func (m *Manifest) MarkFileNumberUsed(number uint64) {
+	if m.nextFileNumber <= number {
+		m.nextFileNumber = number + 1
 	}
 }
 
-func (s *State) AddLiveFiles(files map[uint64]struct{}) map[uint64]struct{} {
-	s.AddLiveTables(files)
+func (m *Manifest) AddLiveFiles(files map[uint64]struct{}) map[uint64]struct{} {
+	m.AddLiveTables(files)
 	return files
 }
 
-func (s *State) AddLiveTables(tables map[uint64]struct{}) {
-	s.versionsMu.Lock()
-	defer s.versionsMu.Unlock()
-	for v := range s.versions {
+func (m *Manifest) AddLiveTables(tables map[uint64]struct{}) {
+	m.versionsMu.Lock()
+	defer m.versionsMu.Unlock()
+	for v := range m.versions {
 		v.addLiveTables(tables)
 	}
 }
 
-func (s *State) resetCurrentManifest(snapshot *Edit) error {
-	if s.manifestNextNumber == 0 {
-		s.manifestNextNumber, s.manifestNextFileNumber = s.NewFileNumber()
-		snapshot.NextFileNumber = s.manifestNextFileNumber
+func (m *Manifest) resetCurrentManifest(snapshot *Edit) error {
+	if m.manifestNextNumber == 0 {
+		m.manifestNextNumber, m.manifestNextFileNumber = m.NewFileNumber()
+		snapshot.NextFileNumber = m.manifestNextFileNumber
 	}
-	manifestNumber := s.manifestNextNumber
+	manifestNumber := m.manifestNextNumber
 
-	manifestName := files.ManifestFileName(s.dbname, manifestNumber)
-	manifestFile, err := s.fs.Open(manifestName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
+	manifestName := files.ManifestFileName(m.dbname, manifestNumber)
+	manifestFile, err := m.fs.Open(manifestName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
 	if err != nil {
 		return err
 	}
 
 	manifestLog := log.NewWriter(manifestFile, 0)
-	err = s.writeEdit(manifestLog, manifestFile, snapshot)
+	err = m.writeEdit(manifestLog, manifestFile, snapshot)
 	if err != nil {
 		manifestFile.Close()
-		s.fs.Remove(manifestName)
+		m.fs.Remove(manifestName)
 		return err
 	}
 
-	err = files.SetCurrentManifest(s.fs, s.dbname, s.currentName, manifestNumber)
+	err = files.SetCurrentManifest(m.fs, m.dbname, m.currentName, manifestNumber)
 	if err != nil {
 		manifestFile.Close()
-		s.fs.Remove(manifestName)
+		m.fs.Remove(manifestName)
 		return err
 	}
 
-	s.manifestFile.Close()
-	s.manifestNextNumber = 0
-	s.manifestLog = manifestLog
-	s.manifestFile = manifestFile
-	s.manifestNumber = manifestNumber
+	m.manifestFile.Close()
+	m.manifestNextNumber = 0
+	m.manifestLog = manifestLog
+	m.manifestFile = manifestFile
+	m.manifestNumber = manifestNumber
 	return nil
 }
 
-func (s *State) writeEdit(log *log.Writer, file file.File, edit *Edit) error {
-	s.scratch = edit.Encode(s.scratch[:0])
-	if err := log.Write(s.scratch); err != nil {
+func (m *Manifest) writeEdit(log *log.Writer, file file.File, edit *Edit) error {
+	m.scratch = edit.Encode(m.scratch[:0])
+	if err := log.Write(m.scratch); err != nil {
 		return err
 	}
 	return file.Sync()
 }
 
-func (s *State) ReleaseVersion(v *Version) {
+func (m *Manifest) ReleaseVersion(v *Version) {
 	if atomic.AddInt64(&v.refs, -1) == 0 {
-		s.versionsMu.Lock()
-		delete(s.versions, v)
-		s.versionsMu.Unlock()
+		m.versionsMu.Lock()
+		delete(m.versions, v)
+		m.versionsMu.Unlock()
 	}
 }
 
-func (s *State) RetainCurrent() *Version {
-	v := s.current
+func (m *Manifest) RetainCurrent() *Version {
+	v := m.current
 	atomic.AddInt64(&v.refs, 1)
 	return v
 }
 
-func (s *State) installCurrent(v *Version) {
+func (m *Manifest) installCurrent(v *Version) {
 	v.refs = 1
-	s.versionsMu.Lock()
-	s.versions[v] = struct{}{}
-	s.versionsMu.Unlock()
-	s.current, v = v, s.current
-	s.ReleaseVersion(v)
+	m.versionsMu.Lock()
+	m.versions[v] = struct{}{}
+	m.versionsMu.Unlock()
+	m.current, v = v, m.current
+	m.ReleaseVersion(v)
 }
 
 // Log writes edit to manifest file.
-func (s *State) Log(edit *Edit) error {
-	s.manifestMu.Lock()
-	defer s.manifestMu.Unlock()
+func (m *Manifest) Log(edit *Edit) error {
+	m.manifestMu.Lock()
+	defer m.manifestMu.Unlock()
 
-	v, err := s.manifestVersion.edit(edit)
+	v, err := m.manifestVersion.edit(edit)
 	if err != nil {
-		panic(fmt.Errorf("%s:\nversion:\n%s\n\nedit:%s\n\n", err, s.manifestVersion, edit))
+		panic(fmt.Errorf("%s:\nversion:\n%s\n\nedit:%s\n\n", err, m.manifestVersion, edit))
 	}
 
-	if edit.LastSequence < s.manifestLastSequence {
-		edit.LastSequence = s.manifestLastSequence
+	if edit.LastSequence < m.manifestLastSequence {
+		edit.LastSequence = m.manifestLastSequence
 	}
-	if edit.LogNumber < s.manifestLogFileNumber {
-		edit.LogNumber = s.manifestLogFileNumber
+	if edit.LogNumber < m.manifestLogFileNumber {
+		edit.LogNumber = m.manifestLogFileNumber
 	}
-	if edit.NextFileNumber < s.manifestNextFileNumber {
-		edit.NextFileNumber = s.manifestNextFileNumber
+	if edit.NextFileNumber < m.manifestNextFileNumber {
+		edit.NextFileNumber = m.manifestNextFileNumber
 	}
 
 	switch {
-	case s.manifestLog.Offset() >= configs.TargetFileSize:
+	case m.manifestLog.Offset() >= configs.TargetFileSize:
 		var snapshot Edit
 		v.snapshot(&snapshot)
-		snapshot.ComparatorName = s.options.Comparator.UserKeyComparator.Name()
+		snapshot.ComparatorName = m.options.Comparator.UserKeyComparator.Name()
 		snapshot.LogNumber = edit.LogNumber
 		snapshot.LastSequence = edit.LastSequence
 		snapshot.NextFileNumber = edit.NextFileNumber
-		err := s.resetCurrentManifest(&snapshot)
+		err := m.resetCurrentManifest(&snapshot)
 		edit.NextFileNumber = snapshot.NextFileNumber
 		if err == nil {
 			break
 		}
 		fallthrough
 	default:
-		err := s.writeEdit(s.manifestLog, s.manifestFile, edit)
+		err := m.writeEdit(m.manifestLog, m.manifestFile, edit)
 		if err != nil {
 			return err
 		}
 	}
-	s.manifestVersion = v
-	s.manifestLastSequence = edit.LastSequence
-	s.manifestLogFileNumber = edit.LogNumber
-	s.manifestNextFileNumber = edit.NextFileNumber
+	m.manifestVersion = v
+	m.manifestLastSequence = edit.LastSequence
+	m.manifestLogFileNumber = edit.LogNumber
+	m.manifestNextFileNumber = edit.NextFileNumber
 	return err
 }
 
-func (s *State) Apply(edit *Edit) {
-	v, err := s.current.edit(edit)
+func (m *Manifest) Apply(edit *Edit) {
+	v, err := m.current.edit(edit)
 	if err != nil {
-		panic(fmt.Errorf("%s:\nversion:\n%s\n\nedit:%s\n\n", err, s.current, edit))
+		panic(fmt.Errorf("%s:\nversion:\n%s\n\nedit:%s\n\n", err, m.current, edit))
 	}
-	if edit.LogNumber != 0 && edit.LogNumber > s.logFileNumber {
-		s.logFileNumber = edit.LogNumber
+	if edit.LogNumber != 0 && edit.LogNumber > m.logFileNumber {
+		m.logFileNumber = edit.LogNumber
 	}
-	s.installCurrent(v)
+	m.installCurrent(v)
 }
 
-func (s *State) PickCompaction() *Compaction {
-	return s.current.pickCompaction()
+func (m *Manifest) PickCompaction() *Compaction {
+	return m.current.pickCompaction()
 }
 
-func Create(dbname string, opts *options.Options) (state *State, err error) {
+func Create(dbname string, opts *options.Options) (manifest *Manifest, err error) {
 	fs := opts.FileSystem
 
 	filenames, err := fs.List(dbname)
@@ -281,7 +281,7 @@ func Create(dbname string, opts *options.Options) (state *State, err error) {
 
 	cache := table.NewCache(dbname, opts)
 	current := &Version{refs: 1, icmp: opts.Comparator, cache: cache}
-	return &State{
+	return &Manifest{
 		dbname:                dbname,
 		currentName:           currentName,
 		fs:                    fs,
@@ -301,7 +301,7 @@ func Create(dbname string, opts *options.Options) (state *State, err error) {
 	}, nil
 }
 
-func Recover(dbname string, opts *options.Options) (state *State, err error) {
+func Recover(dbname string, opts *options.Options) (manifest *Manifest, err error) {
 	fs := opts.FileSystem
 	currentName := files.CurrentFileName(dbname)
 	manifestName, err := files.GetCurrentManifest(fs, dbname, currentName)
@@ -333,7 +333,7 @@ func Recover(dbname string, opts *options.Options) (state *State, err error) {
 
 	cache := table.NewCache(dbname, opts)
 	current.cache = cache
-	state = &State{
+	manifest = &Manifest{
 		dbname:                dbname,
 		currentName:           currentName,
 		fs:                    fs,
@@ -351,7 +351,7 @@ func Recover(dbname string, opts *options.Options) (state *State, err error) {
 		scratch:               builder.Scratch,
 		tableCache:            cache,
 	}
-	state.MarkFileNumberUsed(state.logFileNumber)
+	manifest.MarkFileNumberUsed(manifest.logFileNumber)
 
-	return state, nil
+	return manifest, nil
 }

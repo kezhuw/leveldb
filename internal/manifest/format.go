@@ -1,4 +1,4 @@
-package version
+package manifest
 
 // Edit is encoded as a sequence tag prefixed fields, each records
 // a change to an version. For collection fields, multiple fields may

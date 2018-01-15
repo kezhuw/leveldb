@@ -1,4 +1,4 @@
-package version
+package manifest
 
 import (
 	"github.com/kezhuw/leveldb/internal/configs"

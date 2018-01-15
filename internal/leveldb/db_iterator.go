@@ -6,12 +6,12 @@ import (
 	"github.com/kezhuw/leveldb/internal/errors"
 	"github.com/kezhuw/leveldb/internal/iterator"
 	"github.com/kezhuw/leveldb/internal/keys"
-	"github.com/kezhuw/leveldb/internal/version"
+	"github.com/kezhuw/leveldb/internal/manifest"
 )
 
 type dbIterator struct {
 	db       *DB
-	base     *version.Version
+	base     *manifest.Version
 	ucmp     keys.Comparator
 	sequence keys.Sequence
 
@@ -142,7 +142,7 @@ func (it *dbIterator) finalize() error {
 		return nil
 	}
 	it.status = iterator.Closed
-	it.db.state.ReleaseVersion(it.base)
+	it.db.manifest.ReleaseVersion(it.base)
 	it.db = nil
 	it.base = nil
 	it.iterator = nil
@@ -234,7 +234,7 @@ func (it *dbIterator) findPrevEntry() bool {
 	}
 }
 
-func newDBIterator(db *DB, base *version.Version, seq keys.Sequence, it iterator.Iterator) iterator.Iterator {
+func newDBIterator(db *DB, base *manifest.Version, seq keys.Sequence, it iterator.Iterator) iterator.Iterator {
 	dbIt := &dbIterator{
 		db:       db,
 		base:     base,

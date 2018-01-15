@@ -9,18 +9,18 @@ import (
 	"github.com/kezhuw/leveldb/internal/file"
 	"github.com/kezhuw/leveldb/internal/files"
 	"github.com/kezhuw/leveldb/internal/keys"
+	"github.com/kezhuw/leveldb/internal/manifest"
 	"github.com/kezhuw/leveldb/internal/options"
 	"github.com/kezhuw/leveldb/internal/table"
-	"github.com/kezhuw/leveldb/internal/version"
 )
 
-func NewLevelCompaction(dbname string, seq keys.Sequence, compaction *version.Compaction, s *version.State, opts *options.Options) Compactor {
+func NewLevelCompaction(dbname string, seq keys.Sequence, compaction *manifest.Compaction, m *manifest.Manifest, opts *options.Options) Compactor {
 	if compaction.IsTrivialMove() {
 		return &moveCompaction{c: compaction}
 	}
 	c := &levelCompaction{
 		dbname:           dbname,
-		state:            s,
+		manifest:         m,
 		options:          opts,
 		fs:               opts.FileSystem,
 		Compaction:       compaction,
@@ -30,23 +30,23 @@ func NewLevelCompaction(dbname string, seq keys.Sequence, compaction *version.Co
 }
 
 type moveCompaction struct {
-	c *version.Compaction
+	c *manifest.Compaction
 }
 
 type levelCompaction struct {
-	*version.Compaction
+	*manifest.Compaction
 
-	state   *version.State
-	dbname  string
-	options *options.Options
-	fs      file.FileSystem
+	manifest *manifest.Manifest
+	dbname   string
+	options  *options.Options
+	fs       file.FileSystem
 
 	smallestSequence keys.Sequence
 
-	outputs version.FileList
+	outputs manifest.FileList
 
 	tableName   string
-	tableMeta   version.FileMeta
+	tableMeta   manifest.FileMeta
 	tableFile   file.WriteCloser
 	tableWriter table.Writer
 
@@ -72,10 +72,10 @@ func (c *moveCompaction) FileNumbers() []uint64 {
 	return nil
 }
 
-func (c *moveCompaction) Compact(edit *version.Edit) error {
+func (c *moveCompaction) Compact(edit *manifest.Edit) error {
 	f := c.c.Inputs[0][0]
-	edit.AddedFiles = append(edit.AddedFiles[:0], version.LevelFileMeta{Level: c.c.Level + 1, FileMeta: f})
-	edit.DeletedFiles = append(edit.DeletedFiles[:0], version.LevelFileNumber{Level: c.c.Level, Number: f.Number})
+	edit.AddedFiles = append(edit.AddedFiles[:0], manifest.LevelFileMeta{Level: c.c.Level + 1, FileMeta: f})
+	edit.DeletedFiles = append(edit.DeletedFiles[:0], manifest.LevelFileNumber{Level: c.c.Level, Number: f.Number})
 	return nil
 }
 
@@ -119,7 +119,7 @@ func (c *levelCompaction) closeCurrentTable() error {
 	if err != nil {
 		return err
 	}
-	c.outputs = append(c.outputs, &version.FileMeta{
+	c.outputs = append(c.outputs, &manifest.FileMeta{
 		Number:   c.tableMeta.Number,
 		Size:     uint64(c.tableWriter.FileSize()),
 		Smallest: c.tableMeta.Smallest.Dup(),
@@ -135,7 +135,7 @@ func (c *levelCompaction) newFileNumber() uint64 {
 		return x
 	}
 	var fileNumber uint64
-	fileNumber, c.nextFileNumber = c.state.NewFileNumber()
+	fileNumber, c.nextFileNumber = c.manifest.NewFileNumber()
 	c.fileNumbers = append(c.fileNumbers, fileNumber)
 	c.fileNumbersOff = len(c.fileNumbers)
 	return fileNumber
@@ -245,7 +245,7 @@ func (c *levelCompaction) compact() error {
 	return it.Err()
 }
 
-func (c *levelCompaction) record(edit *version.Edit) {
+func (c *levelCompaction) record(edit *manifest.Edit) {
 	edit.AddedFiles = edit.AddedFiles[:0]
 	edit.DeletedFiles = edit.DeletedFiles[:0]
 	edit.CompactPointers = edit.CompactPointers[:0]
@@ -253,19 +253,19 @@ func (c *levelCompaction) record(edit *version.Edit) {
 	for which := 0; which < 2; which++ {
 		files := c.Inputs[which]
 		for _, f := range files {
-			edit.DeletedFiles = append(edit.DeletedFiles, version.LevelFileNumber{Level: level + which, Number: f.Number})
+			edit.DeletedFiles = append(edit.DeletedFiles, manifest.LevelFileNumber{Level: level + which, Number: f.Number})
 		}
 	}
 	for _, f := range c.outputs {
-		edit.AddedFiles = append(edit.AddedFiles, version.LevelFileMeta{Level: level + 1, FileMeta: f})
+		edit.AddedFiles = append(edit.AddedFiles, manifest.LevelFileMeta{Level: level + 1, FileMeta: f})
 	}
-	edit.CompactPointers = append(edit.CompactPointers, version.LevelCompactPointer{Level: level, Largest: c.NextCompactPointer})
+	edit.CompactPointers = append(edit.CompactPointers, manifest.LevelCompactPointer{Level: level, Largest: c.NextCompactPointer})
 	if c.nextFileNumber > edit.NextFileNumber {
 		edit.NextFileNumber = c.nextFileNumber
 	}
 }
 
-func (c *levelCompaction) Compact(edit *version.Edit) error {
+func (c *levelCompaction) Compact(edit *manifest.Edit) error {
 	err := c.compact()
 	if err != nil {
 		return err

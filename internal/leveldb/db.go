@@ -20,9 +20,9 @@ import (
 	"github.com/kezhuw/leveldb/internal/keys"
 	"github.com/kezhuw/leveldb/internal/log"
 	"github.com/kezhuw/leveldb/internal/logger"
+	"github.com/kezhuw/leveldb/internal/manifest"
 	"github.com/kezhuw/leveldb/internal/memtable"
 	"github.com/kezhuw/leveldb/internal/options"
-	"github.com/kezhuw/leveldb/internal/version"
 )
 
 type DB struct {
@@ -31,10 +31,10 @@ type DB struct {
 	requestc chan batch.Request
 	requests chan batch.Request
 
-	mu    sync.RWMutex
-	mem   *memtable.MemTable
-	imm   *memtable.MemTable
-	state *version.State
+	mu       sync.RWMutex
+	mem      *memtable.MemTable
+	imm      *memtable.MemTable
+	manifest *manifest.Manifest
 
 	closing bool
 	closed  chan struct{}
@@ -77,7 +77,7 @@ type DB struct {
 type compactionResult struct {
 	level   int
 	err     error
-	edit    *version.Edit
+	edit    *manifest.Edit
 	aborted bool
 }
 
@@ -125,11 +125,11 @@ func Open(dbname string, opts *options.Options) (db *DB, err error) {
 }
 
 func (db *DB) newLogFile() (file.File, uint64, error) {
-	logNumber, _ := db.state.NewFileNumber()
+	logNumber, _ := db.manifest.NewFileNumber()
 	logName := files.LogFileName(db.name, logNumber)
 	logFile, err := db.fs.Open(logName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
 	if err != nil {
-		db.state.ReuseFileNumber(logNumber)
+		db.manifest.ReuseFileNumber(logNumber)
 		return nil, 0, err
 	}
 	return logFile, logNumber, nil
@@ -203,7 +203,7 @@ func (db *DB) recoverLogs(logs []uint64) error {
 		return nil
 	}
 	var imm *memtable.MemTable
-	maxSequence := db.state.LastSequence()
+	maxSequence := db.manifest.LastSequence()
 	if n != 1 {
 		sort.Sort(byOldestFileNumber(logs))
 		imm = memtable.New(db.options.Comparator)
@@ -226,8 +226,8 @@ func (db *DB) recoverLogs(logs []uint64) error {
 	db.log = log.NewWriter(logFile, offset)
 	db.logFile = logFile
 	db.logNumber = logNumber
-	db.state.SetLastSequence(maxSequence)
-	db.state.MarkFileNumberUsed(logNumber)
+	db.manifest.SetLastSequence(maxSequence)
+	db.manifest.MarkFileNumberUsed(logNumber)
 	return nil
 }
 
@@ -237,7 +237,7 @@ func (db *DB) removeTableFiles(numbers []uint64) {
 	}
 }
 
-func (db *DB) compactAndLog(c compact.Compactor, edit *version.Edit) {
+func (db *DB) compactAndLog(c compact.Compactor, edit *manifest.Edit) {
 	level := c.Level()
 	compacted := false
 	var err error
@@ -257,7 +257,7 @@ func (db *DB) compactAndLog(c compact.Compactor, edit *version.Edit) {
 			timeout = 0
 			fallthrough
 		default:
-			err = db.state.Log(edit)
+			err = db.manifest.Log(edit)
 			if err == nil {
 				db.compactionResultc <- compactionResult{level: level, edit: edit}
 				return
@@ -276,16 +276,16 @@ func (db *DB) compactAndLog(c compact.Compactor, edit *version.Edit) {
 	}
 }
 
-func (db *DB) applyCompaction(level int, edit *version.Edit) {
+func (db *DB) applyCompaction(level int, edit *manifest.Edit) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
-	db.state.Apply(edit)
+	db.manifest.Apply(edit)
 	if level == -1 {
 		db.imm = nil
 	}
 }
 
-func (db *DB) completeCompaction(level int, err error, edit *version.Edit, aborted bool) {
+func (db *DB) completeCompaction(level int, err error, edit *manifest.Edit, aborted bool) {
 	if err == nil || aborted {
 		defer db.bgGroup.Done()
 		switch level {
@@ -318,7 +318,7 @@ func (db *DB) removeObsoleteFiles(logNumber, manifestNumber uint64, done chan st
 	if done != nil {
 		defer close(done)
 	}
-	lives := db.state.AddLiveFiles(make(map[uint64]struct{}))
+	lives := db.manifest.AddLiveFiles(make(map[uint64]struct{}))
 	filenames, _ := db.fs.List(db.name)
 	for _, name := range filenames {
 		kind, number := files.Parse(name)
@@ -355,23 +355,23 @@ func (db *DB) tryRemoveObsoleteFiles() {
 	db.collectionDone = make(chan struct{})
 	db.collectionFiles = true
 	db.bgGroup.Add(1)
-	go db.removeObsoleteFiles(db.state.LogFileNumber(), db.state.ManifestFileNumber(), db.collectionDone)
+	go db.removeObsoleteFiles(db.manifest.LogFileNumber(), db.manifest.ManifestFileNumber(), db.collectionDone)
 }
 
 func (db *DB) tryLevelCompaction() {
 	if db.collectionFiles || db.compactionLevel >= 0 || db.closing {
 		return
 	}
-	compaction := db.state.PickCompaction()
+	compaction := db.manifest.PickCompaction()
 	if compaction == nil {
 		return
 	}
 	db.compactionLevel = compaction.Level
-	var edit version.Edit
+	var edit manifest.Edit
 	edit.LogNumber = db.logNumber
-	edit.LastSequence = db.state.LastSequence()
-	edit.NextFileNumber = db.state.NextFileNumber()
-	c := compact.NewLevelCompaction(db.name, db.getSmallestSnapshot(), compaction, db.state, db.options)
+	edit.LastSequence = db.manifest.LastSequence()
+	edit.NextFileNumber = db.manifest.NextFileNumber()
+	c := compact.NewLevelCompaction(db.name, db.getSmallestSnapshot(), compaction, db.manifest, db.options)
 	db.bgGroup.Add(1)
 	go db.compactAndLog(c, &edit)
 }
@@ -381,20 +381,20 @@ func (db *DB) tryMemoryCompaction() {
 		return
 	}
 	db.compactionMemory = true
-	s := db.state
-	fileNumber, nextFileNumber := s.NewFileNumber()
-	c := compact.NewMemTableCompaction(db.name, db.getSmallestSnapshot(), fileNumber, db.compactionLevel, db.imm, s.Current(), db.options)
-	var edit version.Edit
+	m := db.manifest
+	fileNumber, nextFileNumber := m.NewFileNumber()
+	c := compact.NewMemTableCompaction(db.name, db.getSmallestSnapshot(), fileNumber, db.compactionLevel, db.imm, m.Current(), db.options)
+	var edit manifest.Edit
 	edit.LogNumber = db.logNumber
 	edit.NextFileNumber = nextFileNumber
-	edit.LastSequence = s.LastSequence()
+	edit.LastSequence = m.LastSequence()
 	db.bgGroup.Add(1)
 	go db.compactAndLog(c, &edit)
 }
 
 func (db *DB) tryOpenNextLog() {
 	if db.imm == nil && db.nextLogNumber == 0 {
-		db.nextLogNumber, _ = db.state.NewFileNumber()
+		db.nextLogNumber, _ = db.manifest.NewFileNumber()
 		db.bgGroup.Add(1)
 		go db.openNextLog()
 	}
@@ -425,7 +425,7 @@ func (db *DB) NewSnapshot() *Snapshot {
 		db.mu.RUnlock()
 		return nil
 	}
-	ss.seq = db.state.LastSequence()
+	ss.seq = db.manifest.LastSequence()
 	db.mu.RUnlock()
 	db.snapshotsMu.Lock()
 	db.snapshots.PushBack(ss)
@@ -443,7 +443,7 @@ func (db *DB) getSmallestSnapshot() keys.Sequence {
 	db.snapshotsMu.Lock()
 	defer db.snapshotsMu.Unlock()
 	if db.snapshots.Empty() {
-		return db.state.LastSequence()
+		return db.manifest.LastSequence()
 	}
 	return db.snapshots.Oldest()
 }
@@ -498,7 +498,7 @@ func (db *DB) writeBatch(sync bool, batch batch.Batch, reply chan error) {
 		reply <- db.compactionErr
 		return
 	}
-	lastSequence := db.state.LastSequence()
+	lastSequence := db.manifest.LastSequence()
 	batch.SetSequence(lastSequence + 1)
 	lastSequence = lastSequence.Next(uint64(batch.Count()))
 	err := db.writeLog(sync, batch.Bytes())
@@ -514,7 +514,7 @@ func (db *DB) writeBatch(sync bool, batch batch.Batch, reply chan error) {
 		// number.
 		//
 		// So an error write may indicate a successful write ?
-		db.state.SetLastSequence(lastSequence)
+		db.manifest.SetLastSequence(lastSequence)
 		db.closeLog(err)
 		return
 	}
@@ -522,7 +522,7 @@ func (db *DB) writeBatch(sync bool, batch batch.Batch, reply chan error) {
 	// Setting last sequence happens before sending reply, which happens
 	// before completion of receiving. Readers will observe the new last
 	// sequence eventually. So we don't do any sychronization here.
-	db.state.SetLastSequence(lastSequence)
+	db.manifest.SetLastSequence(lastSequence)
 	reply <- err
 }
 
@@ -563,7 +563,7 @@ func (db *DB) merge() {
 func (db *DB) throttle() (chan batch.Request, <-chan time.Time) {
 	bufSize := db.options.WriteBufferSize
 	bufUsage := db.mem.ApproximateMemoryUsage()
-	level0NumFiles := len(db.state.Current().Levels[0])
+	level0NumFiles := len(db.manifest.Current().Levels[0])
 	switch {
 	case db.log == nil:
 		db.tryOpenNextLog()
@@ -677,11 +677,11 @@ func (db *DB) get(key []byte, seq keys.Sequence, opts *options.ReadOptions) ([]b
 		db.mu.RUnlock()
 		return nil, errors.ErrDBClosed
 	}
-	lastSequence := db.state.LastSequence()
-	ver := db.state.RetainCurrent()
+	lastSequence := db.manifest.LastSequence()
+	ver := db.manifest.RetainCurrent()
 	memtables := [2]*memtable.MemTable{db.mem, db.imm}
 	db.mu.RUnlock()
-	defer db.state.ReleaseVersion(ver)
+	defer db.manifest.ReleaseVersion(ver)
 	if seq == keys.MaxSequence {
 		seq = lastSequence
 	}
@@ -725,10 +725,10 @@ func (db *DB) between(start, limit []byte, seq keys.Sequence, opts *options.Read
 		db.mu.RUnlock()
 		return iterator.Error(errors.ErrDBClosed)
 	}
-	lastSequence := db.state.LastSequence()
+	lastSequence := db.manifest.LastSequence()
 	mem := db.mem
 	imm := db.imm
-	ver := db.state.RetainCurrent()
+	ver := db.manifest.RetainCurrent()
 	db.mu.RUnlock()
 	var iters []iterator.Iterator
 	iters = append(iters, mem.NewIterator())
@@ -749,9 +749,9 @@ func (db *DB) finalize() {
 	close(db.requestc)
 }
 
-func initDB(db *DB, name string, s *version.State, locker io.Closer, opts *options.Options) {
+func initDB(db *DB, name string, m *manifest.Manifest, locker io.Closer, opts *options.Options) {
 	db.name = name
-	db.state = s
+	db.manifest = m
 	db.locker = locker
 	db.fs = opts.FileSystem
 	db.options = opts
@@ -767,11 +767,11 @@ func initDB(db *DB, name string, s *version.State, locker io.Closer, opts *optio
 }
 
 func createDB(dbname string, locker io.Closer, opts *options.Options) (*DB, error) {
-	state, err := version.Create(dbname, opts)
+	manifest, err := manifest.Create(dbname, opts)
 	if err != nil {
 		return nil, err
 	}
-	logNumber, _ := state.NewFileNumber()
+	logNumber, _ := manifest.NewFileNumber()
 	logName := files.LogFileName(dbname, logNumber)
 	logFile, err := opts.FileSystem.Open(logName, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
 	if err != nil {
@@ -783,14 +783,14 @@ func createDB(dbname string, locker io.Closer, opts *options.Options) (*DB, erro
 		logFile:   logFile,
 		logNumber: logNumber,
 	}
-	initDB(db, dbname, state, locker, opts)
+	initDB(db, dbname, manifest, locker, opts)
 	db.bgGroup.Add(1)
 	go db.serve()
 	return db, nil
 }
 
 func recoverDB(dbname string, locker io.Closer, opts *options.Options) (db *DB, err error) {
-	state, err := version.Recover(dbname, opts)
+	manifest, err := manifest.Recover(dbname, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -798,9 +798,9 @@ func recoverDB(dbname string, locker io.Closer, opts *options.Options) (db *DB, 
 	if err != nil {
 		return nil, err
 	}
-	logNumber := state.LogFileNumber()
+	logNumber := manifest.LogFileNumber()
 	var logs []uint64
-	tables := state.AddLiveFiles(make(map[uint64]struct{}))
+	tables := manifest.AddLiveFiles(make(map[uint64]struct{}))
 	for _, filename := range filenames {
 		kind, number := files.Parse(filename)
 		switch kind {
@@ -816,7 +816,7 @@ func recoverDB(dbname string, locker io.Closer, opts *options.Options) (db *DB, 
 		return nil, fmt.Errorf("leveldb: missing tables: %v", tables)
 	}
 	db = &DB{}
-	initDB(db, dbname, state, locker, opts)
+	initDB(db, dbname, manifest, locker, opts)
 	if err := db.recoverLogs(logs); err != nil {
 		db.closeLog(nil)
 		return nil, err

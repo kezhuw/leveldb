@@ -1,4 +1,4 @@
-package version_test
+package manifest_test
 
 import (
 	"fmt"
@@ -6,11 +6,11 @@ import (
 	"testing"
 
 	"github.com/kezhuw/leveldb/internal/keys"
-	"github.com/kezhuw/leveldb/internal/version"
+	"github.com/kezhuw/leveldb/internal/manifest"
 )
 
 type fileListTest struct {
-	files     version.FileList // file list with no repeated number
+	files     manifest.FileList // file list with no repeated number
 	totalSize uint64
 }
 
@@ -20,8 +20,8 @@ var fileListTests = []fileListTest{
 		totalSize: 0,
 	},
 	{
-		files: version.FileList{
-			&version.FileMeta{
+		files: manifest.FileList{
+			&manifest.FileMeta{
 				Number:   1000,
 				Size:     100,
 				Smallest: []byte("aaaa\x00\x12\x34\x56\x78\x9a\xbc\xde"),
@@ -31,14 +31,14 @@ var fileListTests = []fileListTest{
 		totalSize: 100,
 	},
 	{
-		files: version.FileList{
-			&version.FileMeta{
+		files: manifest.FileList{
+			&manifest.FileMeta{
 				Number:   1000,
 				Size:     100,
 				Smallest: []byte("aaaa\x00\x12\x34\x56\x78\x9a\xbc\xde"),
 				Largest:  []byte("afff\x01\x12\x34\x56\x78\x9a\xbc\xde"),
 			},
-			&version.FileMeta{
+			&manifest.FileMeta{
 				Number:   200,
 				Size:     128,
 				Smallest: []byte("baaa\x00\x12\x34\x56\x78\x9a\xbc\xde"),
@@ -48,20 +48,20 @@ var fileListTests = []fileListTest{
 		totalSize: 228,
 	},
 	{
-		files: version.FileList{
-			&version.FileMeta{
+		files: manifest.FileList{
+			&manifest.FileMeta{
 				Number:   1000,
 				Size:     100,
 				Smallest: []byte("aaaa\x00\x12\x34\x56\x78\x9a\xbc\xde"),
 				Largest:  []byte("afff\x01\x12\x34\x56\x78\x9a\xbc\xde"),
 			},
-			&version.FileMeta{
+			&manifest.FileMeta{
 				Number:   2000,
 				Size:     256,
 				Smallest: []byte("daaa\x00\x12\x34\x56\x78\x9a\xbc\xde"),
 				Largest:  []byte("dfff\x01\x12\x34\x56\x78\x9a\xbc\xde"),
 			},
-			&version.FileMeta{
+			&manifest.FileMeta{
 				Number:   200,
 				Size:     128,
 				Smallest: []byte("baaa\x00\x12\x34\x56\x78\x9a\xbc\xde"),
@@ -71,38 +71,38 @@ var fileListTests = []fileListTest{
 		totalSize: 484,
 	},
 	{
-		files: version.FileList{
-			&version.FileMeta{
+		files: manifest.FileList{
+			&manifest.FileMeta{
 				Number:   1000,
 				Size:     100,
 				Smallest: []byte("aaaa\x00\x12\x34\x56\x78\x9a\xbc\xde"),
 				Largest:  []byte("afff\x01\x12\x34\x56\x78\x9a\xbc\xde"),
 			},
-			&version.FileMeta{
+			&manifest.FileMeta{
 				Number:   2000,
 				Size:     256,
 				Smallest: []byte("daaa\x00\x12\x34\x56\x78\x9a\xbc\xde"),
 				Largest:  []byte("dfff\x01\x12\x34\x56\x78\x9a\xbc\xde"),
 			},
-			&version.FileMeta{
+			&manifest.FileMeta{
 				Number:   200,
 				Size:     128,
 				Smallest: []byte("baaa\x00\x12\x34\x56\x78\x9a\xbc\xde"),
 				Largest:  []byte("bfff\x01\x12\x34\x56\x78\x9a\xbc\xde"),
 			},
-			&version.FileMeta{
+			&manifest.FileMeta{
 				Number:   300,
 				Size:     512,
 				Smallest: []byte("caaa\x00\x12\x34\x56\x78\x9a\xbc\xde"),
 				Largest:  []byte("efff\x01\x12\x34\x56\x78\x9a\xbc\xde"),
 			},
-			&version.FileMeta{
+			&manifest.FileMeta{
 				Number:   3000,
 				Size:     112,
 				Smallest: []byte("bbaa\x00\x12\x34\x56\x78\x9a\xbc\xde"),
 				Largest:  []byte("eeff\x01\x12\x34\x56\x78\x9a\xbc\xde"),
 			},
-			&version.FileMeta{
+			&manifest.FileMeta{
 				Number:   400,
 				Size:     111,
 				Smallest: []byte("ccca\x00\x12\x34\x56\x78\x9a\xbc\xde"),
@@ -113,7 +113,7 @@ var fileListTests = []fileListTest{
 	},
 }
 
-func equalFileList(a, b version.FileList) bool {
+func equalFileList(a, b manifest.FileList) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -125,7 +125,7 @@ func equalFileList(a, b version.FileList) bool {
 	return true
 }
 
-func isSortedByNewestFileNumber(files version.FileList) bool {
+func isSortedByNewestFileNumber(files manifest.FileList) bool {
 	if len(files) == 0 {
 		return true
 	}
@@ -139,7 +139,7 @@ func isSortedByNewestFileNumber(files version.FileList) bool {
 	return true
 }
 
-func isSortedBySmallestKey(files version.FileList, cmp keys.Comparer) bool {
+func isSortedBySmallestKey(files manifest.FileList, cmp keys.Comparer) bool {
 	if len(files) == 0 {
 		return true
 	}
@@ -215,7 +215,7 @@ func TestFileListIndexFile(t *testing.T) {
 	}
 }
 
-func notFoundFileNumbers(files version.FileList) (fileNumbers []uint64) {
+func notFoundFileNumbers(files manifest.FileList) (fileNumbers []uint64) {
 	if len(files) != 0 {
 		files = files.Dup()
 		files.SortByNewestFileNumber()

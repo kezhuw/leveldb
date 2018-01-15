@@ -6,13 +6,13 @@ import (
 	"github.com/kezhuw/leveldb/internal/file"
 	"github.com/kezhuw/leveldb/internal/files"
 	"github.com/kezhuw/leveldb/internal/keys"
+	"github.com/kezhuw/leveldb/internal/manifest"
 	"github.com/kezhuw/leveldb/internal/memtable"
 	"github.com/kezhuw/leveldb/internal/options"
 	"github.com/kezhuw/leveldb/internal/table"
-	"github.com/kezhuw/leveldb/internal/version"
 )
 
-func NewMemTableCompaction(dbname string, seq keys.Sequence, fileNumber uint64, maxLevel int, mem *memtable.MemTable, base *version.Version, opts *options.Options) Compactor {
+func NewMemTableCompaction(dbname string, seq keys.Sequence, fileNumber uint64, maxLevel int, mem *memtable.MemTable, base *manifest.Version, opts *options.Options) Compactor {
 	c := &memtableCompaction{
 		mem:              mem,
 		base:             base,
@@ -30,7 +30,7 @@ func NewMemTableCompaction(dbname string, seq keys.Sequence, fileNumber uint64, 
 
 type memtableCompaction struct {
 	mem              *memtable.MemTable
-	base             *version.Version
+	base             *manifest.Version
 	maxLevel         int
 	smallestSequence keys.Sequence
 	fileNumbers      []uint64
@@ -38,7 +38,7 @@ type memtableCompaction struct {
 	fs      file.FileSystem
 	options *options.Options
 
-	tableMeta   version.FileMeta
+	tableMeta   manifest.FileMeta
 	tableName   string
 	tableWriter table.Writer
 }
@@ -105,11 +105,11 @@ func (c *memtableCompaction) compact() (err error) {
 	return nil
 }
 
-func (c *memtableCompaction) record(edit *version.Edit) {
+func (c *memtableCompaction) record(edit *manifest.Edit) {
 	if c.tableMeta.Size == 0 {
 		return
 	}
-	fmeta := &version.FileMeta{
+	fmeta := &manifest.FileMeta{
 		Number:   c.tableMeta.Number,
 		Size:     c.tableMeta.Size,
 		Smallest: c.tableMeta.Smallest.Dup(),
@@ -119,10 +119,10 @@ func (c *memtableCompaction) record(edit *version.Edit) {
 	if c.maxLevel > 0 && c.maxLevel < level {
 		level = c.maxLevel
 	}
-	edit.AddedFiles = append(edit.AddedFiles[:0], version.LevelFileMeta{Level: level, FileMeta: fmeta})
+	edit.AddedFiles = append(edit.AddedFiles[:0], manifest.LevelFileMeta{Level: level, FileMeta: fmeta})
 }
 
-func (c *memtableCompaction) Compact(edit *version.Edit) error {
+func (c *memtableCompaction) Compact(edit *manifest.Edit) error {
 	err := c.compact()
 	if err != nil {
 		return err
