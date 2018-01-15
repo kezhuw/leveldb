@@ -85,7 +85,7 @@ func (c *memtableCompaction) compact() (err error) {
 	for it.Next() {
 		key := it.Key()
 		currentUserKey, currentSequence, _ := keys.InternalKey(key).Split()
-		if ucmp.Compare(lastUserKey, currentUserKey) == 0 && lastSequence <= c.smallestSequence {
+		if lastSequence <= c.smallestSequence && ucmp.Compare(lastUserKey, currentUserKey) == 0 {
 			continue
 		}
 		w.Add(key, it.Value())
