@@ -368,7 +368,6 @@ func (db *DB) tryLevelCompaction() {
 	}
 	db.compactionLevel = compaction.Level
 	var edit manifest.Edit
-	edit.LogNumber = db.logNumber
 	edit.LastSequence = db.manifest.LastSequence()
 	edit.NextFileNumber = db.manifest.NextFileNumber()
 	c := compact.NewLevelCompaction(db.name, db.getSmallestSnapshot(), compaction, db.manifest, db.options)
