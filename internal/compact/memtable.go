@@ -12,11 +12,9 @@ import (
 	"github.com/kezhuw/leveldb/internal/table"
 )
 
-func NewMemTableCompaction(dbname string, seq keys.Sequence, fileNumber uint64, maxLevel int, mem *memtable.MemTable, base *manifest.Version, opts *options.Options) Compactor {
+func NewMemTableCompaction(dbname string, seq keys.Sequence, fileNumber uint64, mem *memtable.MemTable, opts *options.Options) Compactor {
 	c := &memtableCompaction{
 		mem:              mem,
-		base:             base,
-		maxLevel:         maxLevel,
 		fileNumbers:      make([]uint64, 1),
 		smallestSequence: seq,
 		fs:               opts.FileSystem,
@@ -30,8 +28,6 @@ func NewMemTableCompaction(dbname string, seq keys.Sequence, fileNumber uint64, 
 
 type memtableCompaction struct {
 	mem              *memtable.MemTable
-	base             *manifest.Version
-	maxLevel         int
 	smallestSequence keys.Sequence
 	fileNumbers      []uint64
 
@@ -115,11 +111,7 @@ func (c *memtableCompaction) record(edit *manifest.Edit) {
 		Smallest: c.tableMeta.Smallest.Dup(),
 		Largest:  c.tableMeta.Largest.Dup(),
 	}
-	level := c.base.PickLevelForMemTableOutput(fmeta.Smallest, fmeta.Largest)
-	if c.maxLevel > 0 && c.maxLevel < level {
-		level = c.maxLevel
-	}
-	edit.AddedFiles = append(edit.AddedFiles[:0], manifest.LevelFileMeta{Level: level, FileMeta: fmeta})
+	edit.AddedFiles = append(edit.AddedFiles[:0], manifest.LevelFileMeta{Level: 0, FileMeta: fmeta})
 }
 
 func (c *memtableCompaction) Compact(edit *manifest.Edit) error {
