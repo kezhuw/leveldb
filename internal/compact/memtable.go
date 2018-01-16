@@ -3,6 +3,7 @@ package compact
 import (
 	"os"
 
+	"github.com/kezhuw/leveldb/internal/errors"
 	"github.com/kezhuw/leveldb/internal/file"
 	"github.com/kezhuw/leveldb/internal/keys"
 	"github.com/kezhuw/leveldb/internal/manifest"
@@ -10,6 +11,20 @@ import (
 	"github.com/kezhuw/leveldb/internal/options"
 	"github.com/kezhuw/leveldb/internal/table"
 )
+
+// CompactMemTable compacts memtable to file.
+func CompactMemTable(fileNumber uint64, fileName string, smallestSequence keys.Sequence, mem *memtable.MemTable, opts *options.Options) (*manifest.FileMeta, error) {
+	compactor := memtableCompaction{
+		mem:              mem,
+		smallestSequence: smallestSequence,
+		fs:               opts.FileSystem,
+		options:          opts,
+		tableName:        fileName,
+	}
+	compactor.tableMeta.Number = fileNumber
+	compactor.tableMeta.Size = 0
+	return compactor.compact()
+}
 
 func NewMemTableCompaction(fileNumber uint64, fileName string, smallestSequence keys.Sequence, mem *memtable.MemTable, opts *options.Options) Compactor {
 	c := &memtableCompaction{
@@ -51,10 +66,10 @@ func (c *memtableCompaction) FileNumbers() []uint64 {
 	return c.fileNumbers
 }
 
-func (c *memtableCompaction) compact() (err error) {
+func (c *memtableCompaction) compact() (*manifest.FileMeta, error) {
 	f, err := c.fs.Open(c.tableName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() {
 		f.Close()
@@ -67,7 +82,10 @@ func (c *memtableCompaction) compact() (err error) {
 	defer it.Release()
 
 	if !it.First() {
-		return it.Err()
+		if err := it.Err(); err != nil {
+			return nil, err
+		}
+		return nil, errors.ErrEmptyMemTable
 	}
 
 	w := &c.tableWriter
@@ -89,36 +107,28 @@ func (c *memtableCompaction) compact() (err error) {
 		lastUserKey, lastSequence = c.tableMeta.Largest.UserKey(), currentSequence
 	}
 	if err := it.Err(); err != nil {
-		return err
+		return nil, err
 	}
 	if err := w.Finish(); err != nil {
-		return err
+		return nil, err
 	}
 	if err := f.Sync(); err != nil {
-		return err
+		return nil, err
 	}
 	c.tableMeta.Size = uint64(w.FileSize())
-	return nil
-}
-
-func (c *memtableCompaction) record(edit *manifest.Edit) {
-	if c.tableMeta.Size == 0 {
-		return
-	}
-	fmeta := &manifest.FileMeta{
+	return &manifest.FileMeta{
 		Number:   c.tableMeta.Number,
 		Size:     c.tableMeta.Size,
 		Smallest: c.tableMeta.Smallest.Dup(),
 		Largest:  c.tableMeta.Largest.Dup(),
-	}
-	edit.AddedFiles = append(edit.AddedFiles[:0], manifest.LevelFileMeta{Level: 0, FileMeta: fmeta})
+	}, nil
 }
 
 func (c *memtableCompaction) Compact(edit *manifest.Edit) error {
-	err := c.compact()
+	file, err := c.compact()
 	if err != nil {
 		return err
 	}
-	c.record(edit)
+	edit.AddedFiles = append(edit.AddedFiles[:0], manifest.LevelFileMeta{Level: 0, FileMeta: file})
 	return nil
 }

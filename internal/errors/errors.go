@@ -17,6 +17,7 @@ var (
 	ErrOverlappedTables   = errors.New("leveldb: overlapped tables in level 1+")
 	ErrBatchTooManyWrites = errors.New("leveldb: too many writes in one batch")
 	ErrSnapshotReleased   = errors.New("leveldb: snapshot released")
+	ErrEmptyMemTable      = errors.New("leveldb: empty memtable")
 )
 
 // KeyRangeError represents invalid key range, eg. invalid [start, limit) interval.
