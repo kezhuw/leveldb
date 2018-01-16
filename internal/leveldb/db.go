@@ -202,18 +202,33 @@ func (db *DB) recoverLogs(logs []uint64) error {
 		db.logNumber = logNumber
 		return nil
 	}
-	var imm *memtable.MemTable
 	maxSequence := db.manifest.LastSequence()
 	if n != 1 {
 		sort.Sort(byOldestFileNumber(logs))
-		imm = memtable.New(db.options.Comparator)
+		var edit manifest.Edit
 		for _, logNumber := range logs[:n-1] {
-			logFile, _, err := db.loadLog(imm, logNumber, os.O_RDONLY, &maxSequence)
+			mem := memtable.New(db.options.Comparator)
+			logFile, _, err := db.loadLog(mem, logNumber, os.O_RDONLY, &maxSequence)
 			if err != nil {
 				return err
 			}
 			logFile.Close()
+			fileNumber, _ := db.manifest.NewFileNumber()
+			fileName := files.TableFileName(db.name, fileNumber)
+			file, err := compact.CompactMemTable(fileNumber, fileName, keys.MaxSequence, mem, db.options)
+			if err != nil {
+				return err
+			}
+			edit.AddedFiles = append(edit.AddedFiles[:0], manifest.LevelFileMeta{Level: 0, FileMeta: file})
 		}
+		edit.LogNumber = logs[n-1]
+		edit.NextFileNumber = db.manifest.NextFileNumber()
+		edit.LastSequence = maxSequence
+		err := db.manifest.Log(&edit)
+		if err != nil {
+			return err
+		}
+		db.manifest.Apply(&edit)
 	}
 	mem := memtable.New(db.options.Comparator)
 	logNumber := logs[n-1]
@@ -222,7 +237,6 @@ func (db *DB) recoverLogs(logs []uint64) error {
 		return err
 	}
 	db.mem = mem
-	db.imm = imm
 	db.log = log.NewWriter(logFile, offset)
 	db.logFile = logFile
 	db.logNumber = logNumber
