@@ -382,7 +382,8 @@ func (db *DB) tryMemoryCompaction() {
 	db.compactionMemory = true
 	m := db.manifest
 	fileNumber, nextFileNumber := m.NewFileNumber()
-	c := compact.NewMemTableCompaction(db.name, db.getSmallestSnapshot(), fileNumber, db.imm, db.options)
+	fileName := files.TableFileName(db.name, fileNumber)
+	c := compact.NewMemTableCompaction(fileNumber, fileName, db.getSmallestSnapshot(), db.imm, db.options)
 	var edit manifest.Edit
 	edit.LogNumber = db.logNumber
 	edit.NextFileNumber = nextFileNumber

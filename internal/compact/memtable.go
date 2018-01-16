@@ -4,7 +4,6 @@ import (
 	"os"
 
 	"github.com/kezhuw/leveldb/internal/file"
-	"github.com/kezhuw/leveldb/internal/files"
 	"github.com/kezhuw/leveldb/internal/keys"
 	"github.com/kezhuw/leveldb/internal/manifest"
 	"github.com/kezhuw/leveldb/internal/memtable"
@@ -12,17 +11,18 @@ import (
 	"github.com/kezhuw/leveldb/internal/table"
 )
 
-func NewMemTableCompaction(dbname string, seq keys.Sequence, fileNumber uint64, mem *memtable.MemTable, opts *options.Options) Compactor {
+func NewMemTableCompaction(fileNumber uint64, fileName string, smallestSequence keys.Sequence, mem *memtable.MemTable, opts *options.Options) Compactor {
 	c := &memtableCompaction{
 		mem:              mem,
 		fileNumbers:      make([]uint64, 1),
-		smallestSequence: seq,
+		smallestSequence: smallestSequence,
 		fs:               opts.FileSystem,
-		options:          opts}
+		options:          opts,
+		tableName:        fileName,
+	}
 	c.fileNumbers[0] = fileNumber
 	c.tableMeta.Number = fileNumber
 	c.tableMeta.Size = 0
-	c.tableName = files.TableFileName(dbname, fileNumber)
 	return c
 }
 
