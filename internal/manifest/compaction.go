@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"github.com/kezhuw/leveldb/internal/compaction"
 	"github.com/kezhuw/leveldb/internal/configs"
 	"github.com/kezhuw/leveldb/internal/iterator"
 	"github.com/kezhuw/leveldb/internal/keys"
@@ -8,6 +9,7 @@ import (
 )
 
 type Compaction struct {
+	Registration       *compaction.Registration
 	Level              int
 	Base               *Version
 	Inputs             [2]FileList

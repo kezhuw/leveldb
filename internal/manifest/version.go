@@ -3,8 +3,8 @@ package manifest
 import (
 	"fmt"
 	"sort"
-	"sync/atomic"
 
+	"github.com/kezhuw/leveldb/internal/compaction"
 	"github.com/kezhuw/leveldb/internal/configs"
 	"github.com/kezhuw/leveldb/internal/errors"
 	"github.com/kezhuw/leveldb/internal/iterator"
@@ -13,16 +13,36 @@ import (
 	"github.com/kezhuw/leveldb/internal/table"
 )
 
+type compactionScore struct {
+	level int
+	score float64
+}
+
+type byTopScore []compactionScore
+
+func (p byTopScore) Len() int {
+	return len(p)
+}
+
+func (p byTopScore) Less(i, j int) bool {
+	return p[i].score > p[j].score
+}
+
+func (p byTopScore) Swap(i, j int) {
+	p[i], p[j] = p[j], p[i]
+}
+
 type Version struct {
-	refs  int64
-	icmp  *keys.InternalComparator
-	cache *table.Cache
+	number uint64
+	refs   int64
+	icmp   *keys.InternalComparator
+	cache  *table.Cache
 	// Levels[0], sorted from newest to oldest;
 	// Levels[n], sorted from smallest to largest.
 	Levels [configs.NumberLevels]FileList
 
-	CompactionScore    float64
-	CompactionLevel    int
+	scores []compactionScore
+
 	CompactionPointers [configs.NumberLevels]keys.InternalKey
 }
 
@@ -39,7 +59,7 @@ func (v *Version) String() string {
 		}
 		s += "\n"
 	}
-	s += fmt.Sprintf("level %d has highest compaction score: %f\n", v.CompactionLevel, v.CompactionScore)
+	s += fmt.Sprintf("compaction scores: %v\n", v.scores)
 	for level, pointer := range v.CompactionPointers[:] {
 		if len(pointer) == 0 {
 			continue
@@ -120,16 +140,16 @@ func (v *Version) Get(ikey keys.InternalKey, opts *options.ReadOptions) ([]byte,
 }
 
 func (v *Version) computeCompactionScore() {
-	v.CompactionScore = float64(len(v.Levels[0])) / configs.L0CompactionFiles
-	v.CompactionLevel = 0
+	if score := float64(len(v.Levels[0])) / configs.L0CompactionFiles; score > 1.0 {
+		v.scores = append(v.scores, compactionScore{level: 0, score: score})
+	}
 	maxBytes := 10 * 1024 * 1024
 	for level := 1; level < len(v.Levels)-1; level++ {
-		score := float64(v.Levels[level].TotalFileSize()) / float64(maxBytes)
-		if score > v.CompactionScore {
-			v.CompactionScore = score
-			v.CompactionLevel = level
+		if score := float64(v.Levels[level].TotalFileSize()) / float64(maxBytes); score > 1.0 {
+			v.scores = append(v.scores, compactionScore{level: level, score: score})
 		}
 	}
+	sort.Sort(byTopScore(v.scores))
 }
 
 type overlayer interface {
@@ -310,12 +330,8 @@ search:
 	return smallest, largest
 }
 
-func (v *Version) pickCompaction() *Compaction {
-	if v.CompactionScore < 1.0 {
-		return nil
-	}
-
-	c := &Compaction{Level: v.CompactionLevel, Base: v}
+func (v *Version) createCompaction(level int, registration *compaction.Registration) *Compaction {
+	c := &Compaction{Level: level, Base: v, Registration: registration}
 
 	smallest, largest := v.pickCompactionInputs(c)
 	var allSmallest, allLargest keys.InternalKey
@@ -356,8 +372,21 @@ func (v *Version) pickCompaction() *Compaction {
 	c.MaxOutputFileSize = configs.TargetFileSize
 	c.NextCompactPointer = largest
 
-	atomic.AddInt64(&v.refs, 1)
 	return c
+}
+
+func (v *Version) pickCompactions(registry *compaction.Registry, nextFileNumber uint64) []*Compaction {
+	var compactions []*Compaction
+	for _, score := range v.scores {
+		level := score.level
+		registration := registry.Register(level, level+1)
+		if registration == nil {
+			continue
+		}
+		registration.NextFileNumber = nextFileNumber
+		compactions = append(compactions, v.createCompaction(level, registration))
+	}
+	return compactions
 }
 
 func (v *Version) PickLevelForMemTableOutput(smallest, largest []byte) int {
@@ -387,7 +416,7 @@ func (v *Version) PickLevelForMemTableOutput(smallest, largest []byte) int {
 }
 
 func (v *Version) edit(edit *Edit) (*Version, error) {
-	v1 := v.dup()
+	v1 := v.clone()
 	if err := v1.apply(edit); err != nil {
 		return nil, err
 	}
@@ -406,15 +435,13 @@ func (v *Version) snapshot(edit *Edit) {
 	}
 }
 
-func (v *Version) dup() *Version {
-	dup := &Version{icmp: v.icmp, cache: v.cache}
+func (v *Version) clone() *Version {
+	copy := &Version{icmp: v.icmp, cache: v.cache, number: v.number + 1}
 	for level := 0; level < configs.NumberLevels; level++ {
-		dup.Levels[level] = v.Levels[level].Dup()
+		copy.Levels[level] = v.Levels[level].Dup()
 	}
-	dup.CompactionPointers = v.CompactionPointers
-	dup.CompactionScore = v.CompactionScore
-	dup.CompactionLevel = v.CompactionLevel
-	return dup
+	copy.CompactionPointers = v.CompactionPointers
+	return copy
 }
 
 func (v *Version) apply(edit *Edit) error {

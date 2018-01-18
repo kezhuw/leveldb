@@ -29,13 +29,11 @@ func CompactMemTable(fileNumber uint64, fileName string, smallestSequence keys.S
 func NewMemTableCompactor(fileNumber uint64, fileName string, smallestSequence keys.Sequence, mem *memtable.MemTable, opts *options.Options) Compactor {
 	c := &memtableCompactor{
 		mem:              mem,
-		fileNumbers:      make([]uint64, 1),
 		smallestSequence: smallestSequence,
 		fs:               opts.FileSystem,
 		options:          opts,
 		tableName:        fileName,
 	}
-	c.fileNumbers[0] = fileNumber
 	c.tableMeta.Number = fileNumber
 	c.tableMeta.Size = 0
 	return c
@@ -44,7 +42,6 @@ func NewMemTableCompactor(fileNumber uint64, fileName string, smallestSequence k
 type memtableCompactor struct {
 	mem              *memtable.MemTable
 	smallestSequence keys.Sequence
-	fileNumbers      []uint64
 
 	fs      file.FileSystem
 	options *options.Options
@@ -60,10 +57,6 @@ func (c *memtableCompactor) Level() int {
 
 func (c *memtableCompactor) Rewind() {
 	c.tableMeta.Size = 0
-}
-
-func (c *memtableCompactor) FileNumbers() []uint64 {
-	return c.fileNumbers
 }
 
 func (c *memtableCompactor) compact() (*manifest.FileMeta, error) {
@@ -82,10 +75,7 @@ func (c *memtableCompactor) compact() (*manifest.FileMeta, error) {
 	defer it.Release()
 
 	if !it.First() {
-		if err := it.Err(); err != nil {
-			return nil, err
-		}
-		return nil, errors.ErrEmptyMemTable
+		return nil, it.Err()
 	}
 
 	w := &c.tableWriter
@@ -128,6 +118,9 @@ func (c *memtableCompactor) Compact(edit *manifest.Edit) error {
 	file, err := c.compact()
 	if err != nil {
 		return err
+	}
+	if file == nil {
+		return errors.ErrEmptyMemTable
 	}
 	edit.AddedFiles = append(edit.AddedFiles[:0], manifest.LevelFileMeta{Level: 0, FileMeta: file})
 	return nil

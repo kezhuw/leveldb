@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/kezhuw/leveldb/internal/compaction"
 	"github.com/kezhuw/leveldb/internal/configs"
 	"github.com/kezhuw/leveldb/internal/errors"
 	"github.com/kezhuw/leveldb/internal/file"
@@ -25,18 +26,17 @@ type Manifest struct {
 	tableCache *table.Cache
 
 	lastSequence   keys.Sequence
-	logFileNumber  uint64
 	nextFileNumber uint64
 
-	manifestMu             sync.Mutex
-	manifestLog            *log.Writer
-	manifestFile           file.File
-	manifestNumber         uint64
-	manifestVersion        *Version
-	manifestNextNumber     uint64
-	manifestLastSequence   keys.Sequence
-	manifestLogFileNumber  uint64
-	manifestNextFileNumber uint64
+	// Update only after successful manifest logging, which means that
+	// memtable log files older than logFileNumber and manifest files older
+	// than manifestNumber are obsolete and eligible to be deleted.
+	logFileNumber  uint64
+	manifestNumber uint64
+
+	manifestLog        *log.Writer
+	manifestFile       file.File
+	manifestNextNumber uint64
 
 	current    *Version
 	versions   map[*Version]struct{}
@@ -50,7 +50,7 @@ func (m *Manifest) Current() *Version {
 }
 
 func (m *Manifest) LogFileNumber() uint64 {
-	return m.logFileNumber
+	return atomic.LoadUint64(&m.logFileNumber)
 }
 
 func (m *Manifest) LastSequence() keys.Sequence {
@@ -64,7 +64,7 @@ func (m *Manifest) SetLastSequence(seq keys.Sequence) {
 // ManifestFileNumber returns current manifest number, possibly expired
 // due to switching to new manifest file.
 func (m *Manifest) ManifestFileNumber() uint64 {
-	return m.manifestNumber
+	return atomic.LoadUint64(&m.manifestNumber)
 }
 
 // NewFileNumber returns a new file number and a next file number.
@@ -102,8 +102,7 @@ func (m *Manifest) AddLiveTables(tables map[uint64]struct{}) {
 
 func (m *Manifest) resetCurrentManifest(snapshot *Edit) error {
 	if m.manifestNextNumber == 0 {
-		m.manifestNextNumber, m.manifestNextFileNumber = m.NewFileNumber()
-		snapshot.NextFileNumber = m.manifestNextFileNumber
+		m.manifestNextNumber, snapshot.NextFileNumber = m.NewFileNumber()
 	}
 	manifestNumber := m.manifestNextNumber
 
@@ -132,7 +131,7 @@ func (m *Manifest) resetCurrentManifest(snapshot *Edit) error {
 	m.manifestNextNumber = 0
 	m.manifestLog = manifestLog
 	m.manifestFile = manifestFile
-	m.manifestNumber = manifestNumber
+	atomic.StoreUint64(&m.manifestNumber, manifestNumber)
 	return nil
 }
 
@@ -144,12 +143,14 @@ func (m *Manifest) writeEdit(log *log.Writer, file file.File, edit *Edit) error 
 	return file.Sync()
 }
 
-func (m *Manifest) ReleaseVersion(v *Version) {
+func (m *Manifest) ReleaseVersion(v *Version) bool {
 	if atomic.AddInt64(&v.refs, -1) == 0 {
 		m.versionsMu.Lock()
 		delete(m.versions, v)
 		m.versionsMu.Unlock()
+		return true
 	}
+	return false
 }
 
 func (m *Manifest) RetainCurrent() *Version {
@@ -168,29 +169,32 @@ func (m *Manifest) installCurrent(v *Version) {
 }
 
 // Log writes edit to manifest file.
-func (m *Manifest) Log(edit *Edit) error {
-	m.manifestMu.Lock()
-	defer m.manifestMu.Unlock()
+func (m *Manifest) Log(tip *Version, edit *Edit) (*Version, error) {
+	if current := m.current; current.number > tip.number {
+		panic("current version number > tip version number")
+	}
 
-	v, err := m.manifestVersion.edit(edit)
+	next, err := tip.edit(edit)
 	if err != nil {
-		panic(fmt.Errorf("%s:\nversion:\n%s\n\nedit:%s\n\n", err, m.manifestVersion, edit))
+		panic(fmt.Errorf("leveldb: fail to edit version:\nversion:\n%s\n\nedit:%s", tip, edit))
 	}
 
-	if edit.LastSequence < m.manifestLastSequence {
-		edit.LastSequence = m.manifestLastSequence
+	if lastSequence := m.LastSequence(); edit.LastSequence < lastSequence {
+		edit.LastSequence = lastSequence
 	}
-	if edit.LogNumber < m.manifestLogFileNumber {
-		edit.LogNumber = m.manifestLogFileNumber
+	// logFileNumber will only be written here later, so there is no need
+	// to do atomic loading here.
+	if logNumber := m.logFileNumber; edit.LogNumber < logNumber {
+		edit.LogNumber = logNumber
 	}
-	if edit.NextFileNumber < m.manifestNextFileNumber {
-		edit.NextFileNumber = m.manifestNextFileNumber
+	if nextFileNumber := m.NextFileNumber(); edit.NextFileNumber < nextFileNumber {
+		edit.NextFileNumber = nextFileNumber
 	}
 
 	switch {
 	case m.manifestLog.Offset() >= configs.TargetFileSize:
 		var snapshot Edit
-		v.snapshot(&snapshot)
+		next.snapshot(&snapshot)
 		snapshot.ComparatorName = m.options.Comparator.UserKeyComparator.Name()
 		snapshot.LogNumber = edit.LogNumber
 		snapshot.LastSequence = edit.LastSequence
@@ -204,29 +208,34 @@ func (m *Manifest) Log(edit *Edit) error {
 	default:
 		err := m.writeEdit(m.manifestLog, m.manifestFile, edit)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
-	m.manifestVersion = v
-	m.manifestLastSequence = edit.LastSequence
-	m.manifestLogFileNumber = edit.LogNumber
-	m.manifestNextFileNumber = edit.NextFileNumber
-	return err
+	atomic.StoreUint64(&m.logFileNumber, edit.LogNumber)
+	return next, nil
 }
 
-func (m *Manifest) Apply(edit *Edit) {
-	v, err := m.current.edit(edit)
+func (m *Manifest) Append(tip *Version) {
+	tip.refs = 1
+	m.versionsMu.Lock()
+	m.versions[tip] = struct{}{}
+	m.versionsMu.Unlock()
+	current := m.current
+	m.current, current = tip, m.current
+	m.ReleaseVersion(current)
+}
+
+func (m *Manifest) Apply(edit *Edit) error {
+	next, err := m.Log(m.current, edit)
 	if err != nil {
-		panic(fmt.Errorf("%s:\nversion:\n%s\n\nedit:%s\n\n", err, m.current, edit))
+		return err
 	}
-	if edit.LogNumber != 0 && edit.LogNumber > m.logFileNumber {
-		m.logFileNumber = edit.LogNumber
-	}
-	m.installCurrent(v)
+	m.Append(next)
+	return nil
 }
 
-func (m *Manifest) PickCompaction() *Compaction {
-	return m.current.pickCompaction()
+func (m *Manifest) PickCompactions(registry *compaction.Registry) []*Compaction {
+	return m.current.pickCompactions(registry, m.NextFileNumber())
 }
 
 func Create(dbname string, opts *options.Options) (manifest *Manifest, err error) {
@@ -282,22 +291,20 @@ func Create(dbname string, opts *options.Options) (manifest *Manifest, err error
 	cache := table.NewCache(dbname, opts)
 	current := &Version{refs: 1, icmp: opts.Comparator, cache: cache}
 	return &Manifest{
-		dbname:                dbname,
-		currentName:           currentName,
-		fs:                    fs,
-		options:               opts,
-		lastSequence:          edit.LastSequence,
-		logFileNumber:         edit.LogNumber,
-		nextFileNumber:        edit.NextFileNumber,
-		manifestLog:           manifestLog,
-		manifestFile:          manifestFile,
-		manifestNumber:        manifestNumber,
-		manifestVersion:       current,
-		manifestLogFileNumber: edit.LogNumber,
-		current:               current,
-		versions:              map[*Version]struct{}{current: {}},
-		scratch:               record,
-		tableCache:            cache,
+		dbname:         dbname,
+		currentName:    currentName,
+		fs:             fs,
+		options:        opts,
+		lastSequence:   edit.LastSequence,
+		logFileNumber:  edit.LogNumber,
+		nextFileNumber: edit.NextFileNumber,
+		manifestLog:    manifestLog,
+		manifestFile:   manifestFile,
+		manifestNumber: manifestNumber,
+		current:        current,
+		versions:       map[*Version]struct{}{current: {}},
+		scratch:        record,
+		tableCache:     cache,
 	}, nil
 }
 
@@ -334,22 +341,20 @@ func Recover(dbname string, opts *options.Options) (manifest *Manifest, err erro
 	cache := table.NewCache(dbname, opts)
 	current.cache = cache
 	manifest = &Manifest{
-		dbname:                dbname,
-		currentName:           currentName,
-		fs:                    fs,
-		options:               opts,
-		lastSequence:          builder.LastSequence,
-		logFileNumber:         builder.LogNumber,
-		nextFileNumber:        builder.NextFileNumber,
-		manifestLog:           log.NewWriter(manifestFile, offset),
-		manifestFile:          manifestFile,
-		manifestNumber:        manifestNumber,
-		manifestLogFileNumber: builder.LogNumber,
-		manifestVersion:       current,
-		current:               current,
-		versions:              map[*Version]struct{}{current: {}},
-		scratch:               builder.Scratch,
-		tableCache:            cache,
+		dbname:         dbname,
+		currentName:    currentName,
+		fs:             fs,
+		options:        opts,
+		lastSequence:   builder.LastSequence,
+		logFileNumber:  builder.LogNumber,
+		nextFileNumber: builder.NextFileNumber,
+		manifestLog:    log.NewWriter(manifestFile, offset),
+		manifestFile:   manifestFile,
+		manifestNumber: manifestNumber,
+		current:        current,
+		versions:       map[*Version]struct{}{current: {}},
+		scratch:        builder.Scratch,
+		tableCache:     cache,
 	}
 	manifest.MarkFileNumberUsed(manifest.logFileNumber)
 

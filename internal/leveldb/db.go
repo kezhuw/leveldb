@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"runtime"
 	"sort"
 	"sync"
@@ -30,6 +29,7 @@ type DB struct {
 
 	requestc chan batch.Request
 	requests chan batch.Request
+	requestw chan struct{}
 
 	mu       sync.RWMutex
 	mem      *memtable.MemTable
@@ -47,38 +47,31 @@ type DB struct {
 	locker  io.Closer
 
 	log       *log.Writer
-	logErr    error
 	logFile   file.File
 	logNumber uint64
+
+	// logErr and manifestErr are unrecoverable errors generated from
+	// writing to memtable log and manifest log.
+	logErr      error
+	manifestErr error
+
+	compactionErr error
+
+	manifestErrChan   chan error
+	compactionErrChan chan error
 
 	nextLogFile   chan file.File
 	nextLogNumber uint64
 
-	// background jobs:
-	// * level compaction
-	// * memory compaction
-	// * obsolete files collection
-	//
-	// File collection can't be run concurrently with compactions.
-	// Level and memory compactions can run concurrently with each other.
-	collectionFiles  bool
-	compactionLevel  int
-	compactionMemory bool
-
-	collectionDone chan struct{}
-
-	compactionErr     error
-	compactionResultc chan compactionResult
-
 	snapshots   snapshotList
 	snapshotsMu sync.Mutex
-}
 
-type compactionResult struct {
-	level   int
-	err     error
-	edit    *manifest.Edit
-	aborted bool
+	memtableEdit       chan *manifest.Edit
+	compactionEdit     chan compactionEdit
+	compactionResult   chan compactionResult
+	compactionMemtable chan *memtable.MemTable
+
+	obsoleteFilesChan chan uint64
 }
 
 func Open(dbname string, opts *options.Options) (db *DB, err error) {
@@ -219,16 +212,19 @@ func (db *DB) recoverLogs(logs []uint64) error {
 			if err != nil {
 				return err
 			}
-			edit.AddedFiles = append(edit.AddedFiles[:0], manifest.LevelFileMeta{Level: 0, FileMeta: file})
+			if file != nil {
+				edit.AddedFiles = append(edit.AddedFiles[:0], manifest.LevelFileMeta{Level: 0, FileMeta: file})
+			}
 		}
-		edit.LogNumber = logs[n-1]
-		edit.NextFileNumber = db.manifest.NextFileNumber()
-		edit.LastSequence = maxSequence
-		err := db.manifest.Log(&edit)
-		if err != nil {
-			return err
+		if len(edit.AddedFiles) != 0 {
+			edit.LogNumber = logs[n-1]
+			edit.NextFileNumber = db.manifest.NextFileNumber()
+			edit.LastSequence = maxSequence
+			err := db.manifest.Apply(&edit)
+			if err != nil {
+				return err
+			}
 		}
-		db.manifest.Apply(&edit)
 	}
 	mem := memtable.New(db.options.Comparator)
 	logNumber := logs[n-1]
@@ -251,159 +247,22 @@ func (db *DB) removeTableFiles(numbers []uint64) {
 	}
 }
 
-func (db *DB) compactAndLog(c compactor.Compactor, edit *manifest.Edit) {
-	level := c.Level()
-	compacted := false
-	var err error
-	var timeout time.Duration
-	for {
-		switch compacted {
-		case false:
-			if err != nil {
-				c.Rewind()
-			}
-			err = c.Compact(edit)
-			if err != nil {
-				db.options.Logger.Warnf("level %d compaction: fail to compact: %s", level, err)
-				break
-			}
-			compacted = true
-			timeout = 0
-			fallthrough
-		default:
-			err = db.manifest.Log(edit)
-			if err == nil {
-				db.compactionResultc <- compactionResult{level: level, edit: edit}
-				return
-			}
-			db.options.Logger.Warnf("level %d compaction: fail to log: %s", level, err)
-		}
-		db.compactionResultc <- compactionResult{level: level, err: err}
-		timeout += timeout/2 + time.Second
-		select {
-		case <-db.bgClosing:
-			db.removeTableFiles(c.FileNumbers())
-			db.compactionResultc <- compactionResult{level: level, err: err, aborted: true}
-			return
-		case <-time.After(timeout):
-		}
+func (db *DB) wakeupRequest() {
+	select {
+	case db.requestw <- struct{}{}:
+	default:
 	}
 }
 
-func (db *DB) applyCompaction(level int, edit *manifest.Edit) {
+func (db *DB) appendVersion(level int, version *manifest.Version) {
+	// Request goroutine may be throttled due to too many files in level 0.
+	defer db.wakeupRequest()
 	db.mu.Lock()
 	defer db.mu.Unlock()
-	db.manifest.Apply(edit)
+	db.manifest.Append(version)
 	if level == -1 {
 		db.imm = nil
 	}
-}
-
-func (db *DB) completeCompaction(level int, err error, edit *manifest.Edit, aborted bool) {
-	if err == nil || aborted {
-		defer db.bgGroup.Done()
-		switch level {
-		case -1:
-			db.compactionMemory = false
-		default:
-			db.compactionLevel = -1
-		}
-	}
-	db.compactionErr = err
-	if err != nil {
-		return
-	}
-	db.applyCompaction(level, edit)
-	db.tryLevelCompaction()
-	db.tryRemoveObsoleteFiles()
-}
-
-func (db *DB) completeCollectionFiles() {
-	defer db.bgGroup.Done()
-	db.collectionDone = nil
-	db.collectionFiles = false
-	db.tryMemoryCompaction()
-	db.tryLevelCompaction()
-}
-
-// removeObsoleteFiles removes obsolete files in database directory. If done is not nil,
-// it will be closed after done.
-func (db *DB) removeObsoleteFiles(logNumber, manifestNumber uint64, done chan struct{}) {
-	if done != nil {
-		defer close(done)
-	}
-	lives := db.manifest.AddLiveFiles(make(map[uint64]struct{}))
-	filenames, _ := db.fs.List(db.name)
-	for _, name := range filenames {
-		kind, number := files.Parse(name)
-		switch kind {
-		case files.Invalid, files.Lock, files.Current, files.InfoLog, files.Temp:
-			continue
-		case files.Log:
-			if number >= logNumber {
-				continue
-			}
-		case files.Table, files.SSTTable:
-			if _, ok := lives[number]; ok {
-				continue
-			}
-		case files.Manifest:
-			if number >= manifestNumber {
-				continue
-			}
-		}
-		db.fs.Remove(filepath.Join(db.name, name))
-	}
-}
-
-func (db *DB) tryStartBackground() {
-	db.tryMemoryCompaction()
-	db.tryLevelCompaction()
-	db.tryRemoveObsoleteFiles()
-}
-
-func (db *DB) tryRemoveObsoleteFiles() {
-	if db.compactionLevel >= 0 || db.compactionMemory {
-		return
-	}
-	db.collectionDone = make(chan struct{})
-	db.collectionFiles = true
-	db.bgGroup.Add(1)
-	go db.removeObsoleteFiles(db.manifest.LogFileNumber(), db.manifest.ManifestFileNumber(), db.collectionDone)
-}
-
-func (db *DB) tryLevelCompaction() {
-	if db.collectionFiles || db.compactionLevel >= 0 || db.closing {
-		return
-	}
-	compaction := db.manifest.PickCompaction()
-	if compaction == nil {
-		return
-	}
-	db.compactionLevel = compaction.Level
-	var edit manifest.Edit
-	edit.LastSequence = db.manifest.LastSequence()
-	edit.NextFileNumber = db.manifest.NextFileNumber()
-	c := compactor.NewLevelCompactor(db.name, db.getSmallestSnapshot(), compaction, db.manifest, db.options)
-	db.bgGroup.Add(1)
-	go db.compactAndLog(c, &edit)
-}
-
-func (db *DB) tryMemoryCompaction() {
-	if db.imm == nil || db.collectionFiles || db.closing {
-		return
-	}
-	db.compactionMemory = true
-	m := db.manifest
-	fileNumber, nextFileNumber := m.NewFileNumber()
-	fileName := files.TableFileName(db.name, fileNumber)
-	c := compactor.NewMemTableCompactor(fileNumber, fileName, db.getSmallestSnapshot(), db.imm, db.options)
-	var edit manifest.Edit
-	edit.LogNumber = db.logNumber
-	edit.NextFileNumber = nextFileNumber
-	edit.LastSequence = m.LastSequence()
-	db.bgGroup.Add(1)
-	go db.compactAndLog(c, &edit)
 }
 
 func (db *DB) tryOpenNextLog() {
@@ -423,6 +282,7 @@ func (db *DB) openNextLog() {
 			db.nextLogFile <- f
 			return
 		}
+		timeout += 2*timeout + 5*time.Second
 		select {
 		case <-db.bgClosing:
 			db.nextLogFile <- nil
@@ -508,6 +368,9 @@ func (db *DB) writeBatch(sync bool, batch batch.Batch, reply chan error) {
 	case db.logErr != nil:
 		reply <- db.logErr
 		return
+	case db.manifestErr != nil:
+		reply <- db.manifestErr
+		return
 	case db.compactionErr != nil:
 		reply <- db.compactionErr
 		return
@@ -546,7 +409,7 @@ func drainRequests(requestc chan batch.Request, err error) {
 	}
 }
 
-func (db *DB) merge() {
+func (db *DB) mergeWrite() {
 	var group batch.Group
 	var requests chan batch.Request
 	requestc := db.requestc
@@ -574,16 +437,18 @@ func (db *DB) merge() {
 	}
 }
 
-func (db *DB) throttle() (chan batch.Request, <-chan time.Time) {
+func (db *DB) throttleRequest() (chan batch.Request, <-chan time.Time) {
 	bufSize := db.options.WriteBufferSize
 	bufUsage := db.mem.ApproximateMemoryUsage()
 	level0NumFiles := len(db.manifest.Current().Levels[0])
-	switch {
-	case db.log == nil:
+	if db.log == nil {
 		db.tryOpenNextLog()
+	}
+	switch {
+	case db.logErr != nil || db.compactionErr != nil || db.manifestErr != nil:
 		return db.requests, nil
-	case db.compactionErr != nil:
-		return db.requests, nil
+	case db.log == nil:
+		return nil, nil
 	case bufUsage <= bufSize:
 		return db.requests, nil
 	case level0NumFiles >= configs.L0StopWritesFiles:
@@ -599,11 +464,13 @@ func (db *DB) throttle() (chan batch.Request, <-chan time.Time) {
 	return db.requests, nil
 }
 
-func (db *DB) serve() {
-	go db.merge()
+func (db *DB) serveRequest() {
+	db.bgGroup.Add(1)
+	go db.mergeWrite()
+	go db.serveCompaction(db.bgClosing)
 mainLoop:
 	for {
-		requests, slowdown := db.throttle()
+		requests, slowdown := db.throttleRequest()
 		for {
 			select {
 			case <-db.closed:
@@ -616,10 +483,13 @@ mainLoop:
 				db.openLog(logFile, db.nextLogNumber)
 				db.nextLogNumber = 0
 				continue mainLoop
-			case <-db.collectionDone:
-				db.completeCollectionFiles()
-			case result := <-db.compactionResultc:
-				db.completeCompaction(result.level, result.err, result.edit, result.aborted)
+			case <-db.requestw:
+				continue mainLoop
+			case err := <-db.manifestErrChan:
+				db.manifestErr = err
+				continue mainLoop
+			case err := <-db.compactionErrChan:
+				db.compactionErr = err
 				continue mainLoop
 			case <-slowdown:
 				requests = db.requests
@@ -773,9 +643,15 @@ func initDB(db *DB, name string, m *manifest.Manifest, locker io.Closer, opts *o
 	db.bgClosing = make(chan struct{})
 	db.requestc = make(chan batch.Request, 1024)
 	db.requests = make(chan batch.Request)
+	db.requestw = make(chan struct{}, 1)
 	db.nextLogFile = make(chan file.File, 1)
-	db.compactionLevel = -1
-	db.compactionResultc = make(chan compactionResult, 16)
+	db.manifestErrChan = make(chan error, 1)
+	db.compactionErrChan = make(chan error, 1)
+	db.memtableEdit = make(chan *manifest.Edit, 1)
+	db.compactionEdit = make(chan compactionEdit, configs.NumberLevels)
+	db.compactionResult = make(chan compactionResult, configs.NumberLevels)
+	db.compactionMemtable = make(chan *memtable.MemTable, 1)
+	db.obsoleteFilesChan = make(chan uint64, configs.NumberLevels)
 	db.snapshots.Init()
 	runtime.SetFinalizer(db, (*DB).finalize)
 }
@@ -799,7 +675,7 @@ func createDB(dbname string, locker io.Closer, opts *options.Options) (*DB, erro
 	}
 	initDB(db, dbname, manifest, locker, opts)
 	db.bgGroup.Add(1)
-	go db.serve()
+	go db.serveRequest()
 	return db, nil
 }
 
@@ -836,7 +712,6 @@ func recoverDB(dbname string, locker io.Closer, opts *options.Options) (db *DB, 
 		return nil, err
 	}
 	db.bgGroup.Add(1)
-	go db.serve()
-	db.tryStartBackground()
+	go db.serveRequest()
 	return db, nil
 }

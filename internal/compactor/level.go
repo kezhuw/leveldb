@@ -68,10 +68,6 @@ func (c *moveCompactor) Level() int {
 func (c *moveCompactor) Rewind() {
 }
 
-func (c *moveCompactor) FileNumbers() []uint64 {
-	return nil
-}
-
 func (c *moveCompactor) Compact(edit *manifest.Edit) error {
 	f := c.c.Inputs[0][0]
 	edit.AddedFiles = append(edit.AddedFiles[:0], manifest.LevelFileMeta{Level: c.c.Level + 1, FileMeta: f})
@@ -96,10 +92,6 @@ func (c *levelCompactor) Rewind() {
 	c.grandparentsSeenKey = false
 	c.grandparentsOverlappedBytes = 0
 	copy(c.levelFilePointers[:], zeroLevelFilePointers[:])
-}
-
-func (c *levelCompactor) FileNumbers() []uint64 {
-	return c.fileNumbers
 }
 
 func (c *levelCompactor) closeCurrentTable() error {
