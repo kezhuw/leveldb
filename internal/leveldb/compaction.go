@@ -86,6 +86,7 @@ func (db *DB) serveCompaction(closing chan struct{}) {
 	var pendingMemtable *memtable.MemTable
 	var compactionErr, manifestErr error
 	pendingObsoleteFiles := db.manifest.NextFileNumber()
+	registry.Recap(db.options.CompactionConcurrency)
 	for !(closing == nil && registry.Concurrency() == 0 && ongoingObsoleteFiles == nil && pendingObsoleteFiles == 0) {
 		select {
 		case tableNumber := <-db.obsoleteFilesChan:

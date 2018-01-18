@@ -6,6 +6,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/kezhuw/leveldb/internal/compaction"
 	"github.com/kezhuw/leveldb/internal/compress"
 	"github.com/kezhuw/leveldb/internal/file"
 	"github.com/kezhuw/leveldb/internal/filter"
@@ -136,62 +137,67 @@ func matchFileSystem(fs file.FileSystem, buf *bytes.Buffer) bool {
 }
 
 type optionsTest struct {
-	options              *Options
-	comparator           keys.Comparator
-	compression          compress.Type
-	blockSize            int
-	blockRestartInterval int
-	writeBufferSize      int
-	maxOpenFiles         int
-	blockCacheCapacity   int
-	filterBuffer         *bytes.Buffer
-	loggerBuffer         *bytes.Buffer
-	fsBuffer             *bytes.Buffer
+	options               *Options
+	comparator            keys.Comparator
+	compression           compress.Type
+	blockSize             int
+	blockRestartInterval  int
+	writeBufferSize       int
+	maxOpenFiles          int
+	blockCacheCapacity    int
+	compactionConcurrency int
+	filterBuffer          *bytes.Buffer
+	loggerBuffer          *bytes.Buffer
+	fsBuffer              *bytes.Buffer
 }
 
 var optionsTests = []optionsTest{
 	{
-		comparator:           keys.BytewiseComparator,
-		compression:          compress.SnappyCompression,
-		blockSize:            options.DefaultBlockSize,
-		blockRestartInterval: options.DefaultBlockRestartInterval,
-		writeBufferSize:      options.DefaultWriteBufferSize,
-		maxOpenFiles:         options.DefaultMaxOpenFiles,
-		blockCacheCapacity:   options.DefaultBlockCacheCapacity,
+		comparator:            keys.BytewiseComparator,
+		compression:           compress.SnappyCompression,
+		blockSize:             options.DefaultBlockSize,
+		blockRestartInterval:  options.DefaultBlockRestartInterval,
+		writeBufferSize:       options.DefaultWriteBufferSize,
+		maxOpenFiles:          options.DefaultMaxOpenFiles,
+		blockCacheCapacity:    options.DefaultBlockCacheCapacity,
+		compactionConcurrency: options.DefaultCompactionConcurrency,
 	},
 	{
-		options:              &Options{Compression: SnappyCompression},
-		comparator:           keys.BytewiseComparator,
-		compression:          compress.SnappyCompression,
-		blockSize:            options.DefaultBlockSize,
-		blockRestartInterval: options.DefaultBlockRestartInterval,
-		writeBufferSize:      options.DefaultWriteBufferSize,
-		maxOpenFiles:         options.DefaultMaxOpenFiles,
-		blockCacheCapacity:   options.DefaultBlockCacheCapacity,
+		options:               &Options{Compression: SnappyCompression, CompactionConcurrency: UnlimitedCompactionConcurrency},
+		comparator:            keys.BytewiseComparator,
+		compression:           compress.SnappyCompression,
+		blockSize:             options.DefaultBlockSize,
+		blockRestartInterval:  options.DefaultBlockRestartInterval,
+		writeBufferSize:       options.DefaultWriteBufferSize,
+		maxOpenFiles:          options.DefaultMaxOpenFiles,
+		blockCacheCapacity:    options.DefaultBlockCacheCapacity,
+		compactionConcurrency: compaction.UnlimitedCompactionConcurrency,
 	},
 	{
 		options: &Options{
-			Comparator:           keys.BytewiseComparator,
-			Compression:          NoCompression,
-			BlockSize:            options.DefaultBlockSize * 4,
-			BlockRestartInterval: options.DefaultBlockRestartInterval + 2,
-			WriteBufferSize:      options.DefaultWriteBufferSize + 4096,
-			MaxOpenFiles:         options.DefaultMaxOpenFiles + 512,
-			BlockCacheCapacity:   options.DefaultBlockCacheCapacity + 4096,
-			Filter:               newBufferFilter(filterBuffer),
-			Logger:               newBufferLogger(loggerBuffer),
-			FileSystem:           newBufferFileSystem(fsBuffer),
+			Comparator:            keys.BytewiseComparator,
+			Compression:           NoCompression,
+			BlockSize:             options.DefaultBlockSize * 4,
+			BlockRestartInterval:  options.DefaultBlockRestartInterval + 2,
+			WriteBufferSize:       options.DefaultWriteBufferSize + 4096,
+			MaxOpenFiles:          options.DefaultMaxOpenFiles + 512,
+			BlockCacheCapacity:    options.DefaultBlockCacheCapacity + 4096,
+			CompactionConcurrency: 5,
+			Filter:                newBufferFilter(filterBuffer),
+			Logger:                newBufferLogger(loggerBuffer),
+			FileSystem:            newBufferFileSystem(fsBuffer),
 		},
-		comparator:           keys.BytewiseComparator,
-		compression:          compress.NoCompression,
-		blockSize:            options.DefaultBlockSize * 4,
-		blockRestartInterval: options.DefaultBlockRestartInterval + 2,
-		writeBufferSize:      options.DefaultWriteBufferSize + 4096,
-		maxOpenFiles:         options.DefaultMaxOpenFiles + 512,
-		blockCacheCapacity:   options.DefaultBlockCacheCapacity + 4096,
-		filterBuffer:         filterBuffer,
-		loggerBuffer:         loggerBuffer,
-		fsBuffer:             fsBuffer,
+		comparator:            keys.BytewiseComparator,
+		compression:           compress.NoCompression,
+		blockSize:             options.DefaultBlockSize * 4,
+		blockRestartInterval:  options.DefaultBlockRestartInterval + 2,
+		writeBufferSize:       options.DefaultWriteBufferSize + 4096,
+		maxOpenFiles:          options.DefaultMaxOpenFiles + 512,
+		blockCacheCapacity:    options.DefaultBlockCacheCapacity + 4096,
+		compactionConcurrency: 5,
+		filterBuffer:          filterBuffer,
+		loggerBuffer:          loggerBuffer,
+		fsBuffer:              fsBuffer,
 	},
 }
 
@@ -221,6 +227,9 @@ func TestOptions(t *testing.T) {
 		}
 		if blockCacheCapacity := opts.getBlockCacheCapacity(); blockCacheCapacity != test.blockCacheCapacity {
 			t.Errorf("test=%d-BlockCacheCapacity got=%d want=%v", i, blockCacheCapacity, test.blockCacheCapacity)
+		}
+		if compactionConcurrency := opts.getCompactionConcurrency(); compactionConcurrency != test.compactionConcurrency {
+			t.Errorf("test=%d-CompactionConcurrency got=%d want=%v", i, compactionConcurrency, test.compactionConcurrency)
 		}
 		if filter := opts.getFilter(); !matchFilter(filter, test.filterBuffer) {
 			t.Errorf("test=%d-Filter got=%v", i, filter)
@@ -257,6 +266,9 @@ func TestConvertOptions(t *testing.T) {
 		}
 		if blockCacheCapacity := opts.BlockCacheCapacity; blockCacheCapacity != test.blockCacheCapacity {
 			t.Errorf("test=%d-BlockCacheCapacity got=%d want=%v", i, blockCacheCapacity, test.blockCacheCapacity)
+		}
+		if compactionConcurrency := opts.CompactionConcurrency; compactionConcurrency != test.compactionConcurrency {
+			t.Errorf("test=%d-CompactionConcurrency got=%d want=%v", i, compactionConcurrency, test.compactionConcurrency)
 		}
 		if filter := opts.Filter; !matchFilter(filter, test.filterBuffer) {
 			t.Errorf("test=%d-Filter got=%v", i, filter)

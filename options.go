@@ -3,12 +3,19 @@ package leveldb
 import (
 	"unsafe"
 
+	"github.com/kezhuw/leveldb/internal/compaction"
 	"github.com/kezhuw/leveldb/internal/compress"
 	"github.com/kezhuw/leveldb/internal/file"
 	"github.com/kezhuw/leveldb/internal/filter"
 	"github.com/kezhuw/leveldb/internal/keys"
 	"github.com/kezhuw/leveldb/internal/logger"
 	"github.com/kezhuw/leveldb/internal/options"
+)
+
+const (
+	// UnlimitedCompactionConcurrency specifies than there is no limitation
+	// on compaction concurrency.
+	UnlimitedCompactionConcurrency = compaction.UnlimitedCompactionConcurrency
 )
 
 // CompressionType defines compression methods to compress a table block.
@@ -69,6 +76,12 @@ type Options struct {
 	//
 	// The default value is 8MiB.
 	BlockCacheCapacity int
+
+	// CompactionConcurrency specifies max allowed concurrent compactions.
+	//
+	// The default value is 1, use UnlimitedCompactionConcurrency to enforce
+	// no limitation on concurrent compactions.
+	CompactionConcurrency int
 
 	// Filter specifys a Filter to filter out unnecessary disk reads when looking for
 	// a specific key. The filter is also used to generate filter data when building
@@ -179,6 +192,17 @@ func (opts *Options) getBlockCacheCapacity() int {
 	return opts.BlockCacheCapacity
 }
 
+func (opts *Options) getCompactionConcurrency() int {
+	switch {
+	case opts.CompactionConcurrency == 0:
+		return options.DefaultCompactionConcurrency
+	case opts.CompactionConcurrency < 0:
+		return compaction.UnlimitedCompactionConcurrency
+	default:
+		return opts.CompactionConcurrency
+	}
+}
+
 func convertOptions(opts *Options) *options.Options {
 	if opts == nil {
 		return &options.DefaultOptions
@@ -191,6 +215,7 @@ func convertOptions(opts *Options) *options.Options {
 	iopts.WriteBufferSize = opts.getWriteBufferSize()
 	iopts.MaxOpenFiles = opts.getMaxOpenFiles()
 	iopts.BlockCacheCapacity = opts.getBlockCacheCapacity()
+	iopts.CompactionConcurrency = opts.getCompactionConcurrency()
 	iopts.Filter = opts.getFilter()
 	iopts.Logger = opts.getLogger()
 	iopts.FileSystem = opts.getFileSystem()
