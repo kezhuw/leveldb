@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/kezhuw/leveldb/internal/batch"
-	"github.com/kezhuw/leveldb/internal/compact"
+	"github.com/kezhuw/leveldb/internal/compactor"
 	"github.com/kezhuw/leveldb/internal/configs"
 	"github.com/kezhuw/leveldb/internal/errors"
 	"github.com/kezhuw/leveldb/internal/file"
@@ -215,7 +215,7 @@ func (db *DB) recoverLogs(logs []uint64) error {
 			logFile.Close()
 			fileNumber, _ := db.manifest.NewFileNumber()
 			fileName := files.TableFileName(db.name, fileNumber)
-			file, err := compact.CompactMemTable(fileNumber, fileName, keys.MaxSequence, mem, db.options)
+			file, err := compactor.CompactMemTable(fileNumber, fileName, keys.MaxSequence, mem, db.options)
 			if err != nil {
 				return err
 			}
@@ -251,7 +251,7 @@ func (db *DB) removeTableFiles(numbers []uint64) {
 	}
 }
 
-func (db *DB) compactAndLog(c compact.Compactor, edit *manifest.Edit) {
+func (db *DB) compactAndLog(c compactor.Compactor, edit *manifest.Edit) {
 	level := c.Level()
 	compacted := false
 	var err error
@@ -384,7 +384,7 @@ func (db *DB) tryLevelCompaction() {
 	var edit manifest.Edit
 	edit.LastSequence = db.manifest.LastSequence()
 	edit.NextFileNumber = db.manifest.NextFileNumber()
-	c := compact.NewLevelCompaction(db.name, db.getSmallestSnapshot(), compaction, db.manifest, db.options)
+	c := compactor.NewLevelCompactor(db.name, db.getSmallestSnapshot(), compaction, db.manifest, db.options)
 	db.bgGroup.Add(1)
 	go db.compactAndLog(c, &edit)
 }
@@ -397,7 +397,7 @@ func (db *DB) tryMemoryCompaction() {
 	m := db.manifest
 	fileNumber, nextFileNumber := m.NewFileNumber()
 	fileName := files.TableFileName(db.name, fileNumber)
-	c := compact.NewMemTableCompaction(fileNumber, fileName, db.getSmallestSnapshot(), db.imm, db.options)
+	c := compactor.NewMemTableCompactor(fileNumber, fileName, db.getSmallestSnapshot(), db.imm, db.options)
 	var edit manifest.Edit
 	edit.LogNumber = db.logNumber
 	edit.NextFileNumber = nextFileNumber

@@ -1,4 +1,4 @@
-package compact
+package compactor
 
 import "github.com/kezhuw/leveldb/internal/manifest"
 

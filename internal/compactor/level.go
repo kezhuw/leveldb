@@ -1,4 +1,4 @@
-package compact
+package compactor
 
 import (
 	"os"
@@ -14,11 +14,11 @@ import (
 	"github.com/kezhuw/leveldb/internal/table"
 )
 
-func NewLevelCompaction(dbname string, seq keys.Sequence, compaction *manifest.Compaction, m *manifest.Manifest, opts *options.Options) Compactor {
+func NewLevelCompactor(dbname string, seq keys.Sequence, compaction *manifest.Compaction, m *manifest.Manifest, opts *options.Options) Compactor {
 	if compaction.IsTrivialMove() {
-		return &moveCompaction{c: compaction}
+		return &moveCompactor{c: compaction}
 	}
-	c := &levelCompaction{
+	c := &levelCompactor{
 		dbname:           dbname,
 		manifest:         m,
 		options:          opts,
@@ -29,11 +29,11 @@ func NewLevelCompaction(dbname string, seq keys.Sequence, compaction *manifest.C
 	return c
 }
 
-type moveCompaction struct {
+type moveCompactor struct {
 	c *manifest.Compaction
 }
 
-type levelCompaction struct {
+type levelCompactor struct {
 	*manifest.Compaction
 
 	manifest *manifest.Manifest
@@ -61,18 +61,18 @@ type levelCompaction struct {
 	levelFilePointers [configs.NumberLevels]int
 }
 
-func (c *moveCompaction) Level() int {
+func (c *moveCompactor) Level() int {
 	return c.c.Level
 }
 
-func (c *moveCompaction) Rewind() {
+func (c *moveCompactor) Rewind() {
 }
 
-func (c *moveCompaction) FileNumbers() []uint64 {
+func (c *moveCompactor) FileNumbers() []uint64 {
 	return nil
 }
 
-func (c *moveCompaction) Compact(edit *manifest.Edit) error {
+func (c *moveCompactor) Compact(edit *manifest.Edit) error {
 	f := c.c.Inputs[0][0]
 	edit.AddedFiles = append(edit.AddedFiles[:0], manifest.LevelFileMeta{Level: c.c.Level + 1, FileMeta: f})
 	edit.DeletedFiles = append(edit.DeletedFiles[:0], manifest.LevelFileNumber{Level: c.c.Level, Number: f.Number})
@@ -81,11 +81,11 @@ func (c *moveCompaction) Compact(edit *manifest.Edit) error {
 
 var zeroLevelFilePointers [configs.NumberLevels]int
 
-func (c *levelCompaction) Level() int {
+func (c *levelCompactor) Level() int {
 	return c.Compaction.Level
 }
 
-func (c *levelCompaction) Rewind() {
+func (c *levelCompactor) Rewind() {
 	if c.tableFile != nil {
 		c.tableFile.Close()
 		c.tableFile = nil
@@ -98,11 +98,11 @@ func (c *levelCompaction) Rewind() {
 	copy(c.levelFilePointers[:], zeroLevelFilePointers[:])
 }
 
-func (c *levelCompaction) FileNumbers() []uint64 {
+func (c *levelCompactor) FileNumbers() []uint64 {
 	return c.fileNumbers
 }
 
-func (c *levelCompaction) closeCurrentTable() error {
+func (c *levelCompactor) closeCurrentTable() error {
 	f := c.tableFile
 	if f == nil {
 		return nil
@@ -128,7 +128,7 @@ func (c *levelCompaction) closeCurrentTable() error {
 	return nil
 }
 
-func (c *levelCompaction) newFileNumber() uint64 {
+func (c *levelCompactor) newFileNumber() uint64 {
 	if c.fileNumbersOff < len(c.fileNumbers) {
 		x := c.fileNumbers[c.fileNumbersOff]
 		c.fileNumbersOff++
@@ -141,7 +141,7 @@ func (c *levelCompaction) newFileNumber() uint64 {
 	return fileNumber
 }
 
-func (c *levelCompaction) openTableFile() error {
+func (c *levelCompactor) openTableFile() error {
 	err := c.closeCurrentTable()
 	if err != nil {
 		return err
@@ -160,7 +160,7 @@ func (c *levelCompaction) openTableFile() error {
 	return nil
 }
 
-func (c *levelCompaction) shouldStopBefore(ikey []byte) bool {
+func (c *levelCompactor) shouldStopBefore(ikey []byte) bool {
 	icmp := c.options.Comparator
 	for c.grandparentsIndex < len(c.Grandparents) && icmp.Compare(ikey, c.Grandparents[c.grandparentsIndex].Largest) > 0 {
 		if c.grandparentsSeenKey {
@@ -172,7 +172,7 @@ func (c *levelCompaction) shouldStopBefore(ikey []byte) bool {
 	return c.grandparentsOverlappedBytes > configs.MaxGrandparentOverlappingBytes
 }
 
-func (c *levelCompaction) isBaseLevelForKey(ukey []byte) bool {
+func (c *levelCompactor) isBaseLevelForKey(ukey []byte) bool {
 	ucmp := c.options.Comparator.UserKeyComparator
 	v := c.Base
 	for level := c.Level() + 2; level < configs.NumberLevels; level++ {
@@ -191,7 +191,7 @@ func (c *levelCompaction) isBaseLevelForKey(ukey []byte) bool {
 	return true
 }
 
-func (c *levelCompaction) add(key, value []byte, firstTime bool) error {
+func (c *levelCompactor) add(key, value []byte, firstTime bool) error {
 	// We save keys with same user key in same table, so tables in level+1
 	// will not overlap with each other in user key space.
 	switch {
@@ -209,7 +209,7 @@ func (c *levelCompaction) add(key, value []byte, firstTime bool) error {
 	return c.tableWriter.Add(key, value)
 }
 
-func (c *levelCompaction) compact() error {
+func (c *levelCompactor) compact() error {
 	it := c.NewIterator()
 	defer it.Release()
 
@@ -245,7 +245,7 @@ func (c *levelCompaction) compact() error {
 	return it.Err()
 }
 
-func (c *levelCompaction) record(edit *manifest.Edit) {
+func (c *levelCompactor) record(edit *manifest.Edit) {
 	edit.AddedFiles = edit.AddedFiles[:0]
 	edit.DeletedFiles = edit.DeletedFiles[:0]
 	edit.CompactPointers = edit.CompactPointers[:0]
@@ -265,7 +265,7 @@ func (c *levelCompaction) record(edit *manifest.Edit) {
 	}
 }
 
-func (c *levelCompaction) Compact(edit *manifest.Edit) error {
+func (c *levelCompactor) Compact(edit *manifest.Edit) error {
 	err := c.compact()
 	if err != nil {
 		return err

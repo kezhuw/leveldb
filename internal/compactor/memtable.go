@@ -1,4 +1,4 @@
-package compact
+package compactor
 
 import (
 	"os"
@@ -14,7 +14,7 @@ import (
 
 // CompactMemTable compacts memtable to file.
 func CompactMemTable(fileNumber uint64, fileName string, smallestSequence keys.Sequence, mem *memtable.MemTable, opts *options.Options) (*manifest.FileMeta, error) {
-	compactor := memtableCompaction{
+	compactor := memtableCompactor{
 		mem:              mem,
 		smallestSequence: smallestSequence,
 		fs:               opts.FileSystem,
@@ -26,8 +26,8 @@ func CompactMemTable(fileNumber uint64, fileName string, smallestSequence keys.S
 	return compactor.compact()
 }
 
-func NewMemTableCompaction(fileNumber uint64, fileName string, smallestSequence keys.Sequence, mem *memtable.MemTable, opts *options.Options) Compactor {
-	c := &memtableCompaction{
+func NewMemTableCompactor(fileNumber uint64, fileName string, smallestSequence keys.Sequence, mem *memtable.MemTable, opts *options.Options) Compactor {
+	c := &memtableCompactor{
 		mem:              mem,
 		fileNumbers:      make([]uint64, 1),
 		smallestSequence: smallestSequence,
@@ -41,7 +41,7 @@ func NewMemTableCompaction(fileNumber uint64, fileName string, smallestSequence 
 	return c
 }
 
-type memtableCompaction struct {
+type memtableCompactor struct {
 	mem              *memtable.MemTable
 	smallestSequence keys.Sequence
 	fileNumbers      []uint64
@@ -54,19 +54,19 @@ type memtableCompaction struct {
 	tableWriter table.Writer
 }
 
-func (c *memtableCompaction) Level() int {
+func (c *memtableCompactor) Level() int {
 	return -1
 }
 
-func (c *memtableCompaction) Rewind() {
+func (c *memtableCompactor) Rewind() {
 	c.tableMeta.Size = 0
 }
 
-func (c *memtableCompaction) FileNumbers() []uint64 {
+func (c *memtableCompactor) FileNumbers() []uint64 {
 	return c.fileNumbers
 }
 
-func (c *memtableCompaction) compact() (*manifest.FileMeta, error) {
+func (c *memtableCompactor) compact() (*manifest.FileMeta, error) {
 	f, err := c.fs.Open(c.tableName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
 	if err != nil {
 		return nil, err
@@ -124,7 +124,7 @@ func (c *memtableCompaction) compact() (*manifest.FileMeta, error) {
 	}, nil
 }
 
-func (c *memtableCompaction) Compact(edit *manifest.Edit) error {
+func (c *memtableCompactor) Compact(edit *manifest.Edit) error {
 	file, err := c.compact()
 	if err != nil {
 		return err
