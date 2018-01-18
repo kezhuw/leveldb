@@ -294,77 +294,76 @@ func (v *Version) unionOf(smallest0, largest0, smallest1, largest1 keys.Internal
 	return keys.Min(v.icmp, smallest0, smallest1), keys.Max(v.icmp, largest0, largest1)
 }
 
-func (v *Version) pickCompactionInputs(c *Compaction) (smallest, largest keys.InternalKey) {
+func (v *Version) pickLevelInputs(c *Compaction) (smallest, largest keys.InternalKey) {
 	level := c.Level
 	files := v.Levels[level]
-	inputs0 := c.Inputs[0][:0]
-search:
+	inputs := c.Inputs[0][:0]
 	switch {
 	case len(v.CompactionPointers[level]) == 0:
-		inputs0 = append(inputs0, files[0])
+		inputs = append(inputs, files[0])
 	case level == 0:
 		for _, f := range files {
 			if v.icmp.Compare(f.Largest, v.CompactionPointers[level]) > 0 {
-				inputs0 = append(inputs0, f)
-				break search
+				inputs = append(inputs, f)
+				goto find_overlapping
 			}
 		}
-		inputs0 = append(inputs0, files[0])
+		inputs = append(inputs, files[0])
 	default:
 		n := len(files)
 		i := sort.Search(n, func(i int) bool { return v.icmp.Compare(files[i].Largest, v.CompactionPointers[level]) > 0 })
 		switch i {
 		case n:
-			inputs0 = append(inputs0, files[0])
+			inputs = append(inputs, files[0])
 		default:
-			inputs0 = append(inputs0, files[i])
+			inputs = append(inputs, files[i])
 		}
 	}
+find_overlapping:
+	smallest, largest = inputs[0].Smallest, inputs[0].Largest
 	if level == 0 {
-		smallest, largest := inputs0[0].Smallest, inputs0[0].Largest
-		inputs0 = v.appendOverlappingFiles(inputs0[:0], 0, smallest, largest)
+		inputs = v.appendOverlappingFiles(inputs[:0], 0, smallest, largest)
+		smallest, largest = v.rangeOf(inputs)
 	}
-	smallest, largest = v.rangeOf(inputs0)
-	c.Inputs[0] = inputs0
-	c.Inputs[1] = v.appendOverlappingFiles(c.Inputs[1][:0], level+1, smallest, largest)
+	c.Inputs[0] = inputs
 	return smallest, largest
+}
+
+func (v *Version) expandLevelInputs(c *Compaction, smallest, largest *keys.InternalKey) (allSmallest, allLargest keys.InternalKey) {
+	smallest0, largest0 := *smallest, *largest
+	c.Inputs[1] = v.appendOverlappingFiles(c.Inputs[1][:0], c.Level+1, smallest0, largest0)
+	if len(c.Inputs[1]) == 0 {
+		return smallest0, largest0
+	}
+	// Try to expand the number of files in inputs[0], without changing the number
+	// of files in inputs[1].
+	smallest1, largest1 := v.rangeOf(c.Inputs[1])
+	allSmallest, allLargest = v.unionOf(smallest0, largest0, smallest1, largest1)
+	expandeds0 := v.appendOverlappingFiles(nil, c.Level, allSmallest, allLargest)
+	if len(expandeds0) <= len(c.Inputs[0]) {
+		return
+	}
+	inputs1Size := c.Inputs[1].TotalFileSize()
+	expandeds0Size := expandeds0.TotalFileSize()
+	if expandeds0Size+inputs1Size >= configs.ExpandedCompactionLimitBytes {
+		return
+	}
+	smallest0, largest0 = v.rangeOf(expandeds0)
+	expandeds1 := v.appendOverlappingFiles(nil, c.Level+1, smallest0, largest0)
+	if len(expandeds1) != len(c.Inputs[1]) {
+		return
+	}
+	*smallest = smallest0
+	*largest = largest0
+	c.Inputs[0] = expandeds0
+	return v.unionOf(smallest0, largest0, smallest1, largest1)
 }
 
 func (v *Version) createCompaction(level int, registration *compaction.Registration) *Compaction {
 	c := &Compaction{Level: level, Base: v, Registration: registration}
 
-	smallest, largest := v.pickCompactionInputs(c)
-	var allSmallest, allLargest keys.InternalKey
-
-	switch len(c.Inputs[1]) {
-	case 0:
-		allSmallest, allLargest = smallest, largest
-	default:
-		smallest1, largest1 := v.rangeOf(c.Inputs[1])
-		allSmallest, allLargest = v.unionOf(smallest, largest, smallest1, largest1)
-
-		// Try to expand the number of files in inputs[0], without changing the number
-		// of files in inputs[1].
-		expandeds0 := v.appendOverlappingFiles(nil, c.Level, allSmallest, allLargest)
-		if len(expandeds0) <= len(c.Inputs[0]) {
-			break
-		}
-		inputs1Size := c.Inputs[1].TotalFileSize()
-		expandeds0Size := expandeds0.TotalFileSize()
-		if expandeds0Size+inputs1Size >= configs.ExpandedCompactionLimitBytes {
-			break
-		}
-		newSmallest, newLargest := v.rangeOf(expandeds0)
-		expandeds1 := v.appendOverlappingFiles(nil, c.Level+1, newSmallest, newLargest)
-		if len(expandeds1) != len(c.Inputs[1]) {
-			break
-		}
-		c.Inputs[0] = expandeds0
-		c.Inputs[1] = expandeds1
-		smallest, largest = newSmallest, newLargest
-		smallest1, largest1 = v.rangeOf(expandeds1)
-		allSmallest, allLargest = v.unionOf(smallest, largest, smallest1, largest1)
-	}
+	smallest, largest := v.pickLevelInputs(c)
+	allSmallest, allLargest := v.expandLevelInputs(c, &smallest, &largest)
 
 	if grandparentsLevel := c.Level + 2; grandparentsLevel < configs.NumberLevels {
 		c.Grandparents = v.appendOverlappingFiles(c.Grandparents[:0], grandparentsLevel, allSmallest, allLargest)
