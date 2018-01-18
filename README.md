@@ -20,8 +20,7 @@ implementation details of official. This means that there may be differences in 
 The only exporting package is the top level package. All other packages are internal, and should not used by clients.
 
 - **Concurrent compactions**  
-Currently, one level compaction can coexist with memtable compaction. It is possible to do concurrent level compactions
-in the future.
+Client can control concurrency of compactions through CompactionConcurrency option.
 
 
 ## Benchmarks
@@ -35,7 +34,7 @@ See [kezhuw/go-leveldb-benchmarks][go-leveldb-benchmarks].
 - [ ] Reference counting openning file collection, don't rely on GC
 - [ ] Statistics
 - [x] Benchmarks, See [kezhuw/go-leveldb-benchmarks][go-leveldb-benchmarks].
-- [ ] Concurrent level compaction
+- [x] Concurrent level compaction
 - [ ] Replace hardcoded constants with configurable options
 - [ ] Automatic adjustment of volatile options
 
