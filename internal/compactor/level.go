@@ -69,9 +69,15 @@ func (c *moveCompactor) Rewind() {
 }
 
 func (c *moveCompactor) Compact(edit *manifest.Edit) error {
-	f := c.c.Inputs[0][0]
-	edit.AddedFiles = append(edit.AddedFiles[:0], manifest.LevelFileMeta{Level: c.c.Level + 1, FileMeta: f})
-	edit.DeletedFiles = append(edit.DeletedFiles[:0], manifest.LevelFileNumber{Level: c.c.Level, Number: f.Number})
+	input := c.c.Inputs[0][0]
+	output := &manifest.FileMeta{
+		Number:   input.Number,
+		Size:     input.Size,
+		Smallest: input.Smallest,
+		Largest:  input.Largest,
+	}
+	edit.AddedFiles = append(edit.AddedFiles[:0], manifest.LevelFileMeta{Level: c.c.Level + 1, FileMeta: output})
+	edit.DeletedFiles = append(edit.DeletedFiles[:0], manifest.LevelFileNumber{Level: c.c.Level, Number: input.Number})
 	return nil
 }
 
