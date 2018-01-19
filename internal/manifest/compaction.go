@@ -21,6 +21,7 @@ type Compaction struct {
 func (c *Compaction) NewIterator() iterator.Iterator {
 	v := c.Base
 	opts := &options.ReadOptions{DontFillCache: true, VerifyChecksums: true}
+	icmp := v.options.Comparator
 	var iterators []iterator.Iterator
 	inputs0 := c.Inputs[0]
 	switch c.Level {
@@ -31,12 +32,12 @@ func (c *Compaction) NewIterator() iterator.Iterator {
 		}
 	default:
 		iterators = make([]iterator.Iterator, 1, 2)
-		iterators[0] = newSortedFileIterator(v.icmp, inputs0, v.cache, opts)
+		iterators[0] = newSortedFileIterator(icmp, inputs0, v.cache, opts)
 	}
 	if inputs1 := c.Inputs[1]; len(inputs1) != 0 {
-		iterators = append(iterators, newSortedFileIterator(v.icmp, inputs1, v.cache, opts))
+		iterators = append(iterators, newSortedFileIterator(icmp, inputs1, v.cache, opts))
 	}
-	return iterator.NewMergeIterator(v.icmp, iterators...)
+	return iterator.NewMergeIterator(icmp, iterators...)
 }
 
 func (c *Compaction) IsTrivialMove() bool {

@@ -33,10 +33,11 @@ func (p byTopScore) Swap(i, j int) {
 }
 
 type Version struct {
-	number uint64
-	refs   int64
-	icmp   *keys.InternalComparator
-	cache  *table.Cache
+	number  uint64
+	refs    int64
+	cache   *table.Cache
+	options *options.Options
+
 	// Levels[0], sorted from newest to oldest;
 	// Levels[n], sorted from smallest to largest.
 	Levels [configs.NumberLevels]FileList
@@ -71,11 +72,12 @@ func (v *Version) String() string {
 
 func (v *Version) SortFiles() error {
 	v.Levels[0].SortByNewestFileNumber()
+	icmp := v.options.Comparator
 	for level := 1; level < configs.NumberLevels; level++ {
 		files := v.Levels[level]
-		files.SortBySmallestKey(v.icmp)
+		files.SortBySmallestKey(icmp)
 		for i := 0; i < len(files)-1; i++ {
-			if v.icmp.Compare(files[i].Largest, files[i+1].Smallest) >= 0 {
+			if icmp.Compare(files[i].Largest, files[i+1].Smallest) >= 0 {
 				return errors.ErrOverlappedTables
 			}
 		}
@@ -87,12 +89,13 @@ func (v *Version) AppendIterators(iters []iterator.Iterator, opts *options.ReadO
 	for _, f := range v.Levels[0] {
 		iters = append(iters, v.cache.NewIterator(f.Number, f.Size, opts))
 	}
+	icmp := v.options.Comparator
 	for level := 1; level < len(v.Levels); level++ {
 		files := v.Levels[level]
 		if len(files) == 0 {
 			continue
 		}
-		iters = append(iters, newSortedFileIterator(v.icmp, files, v.cache, opts))
+		iters = append(iters, newSortedFileIterator(icmp, files, v.cache, opts))
 	}
 	return iters
 }
@@ -109,7 +112,7 @@ func (v *Version) match(m matcher, ikey keys.InternalKey, opts *options.ReadOpti
 	//
 	// When ikey > file.Largest, if file.Largest has same key with ikey, it must has larger sequence,
 	// which we can ignore it safely. So we compare ikey and file.Largest directly.
-	icmp := v.icmp
+	icmp := v.options.Comparator
 	ucmp := icmp.UserKeyComparator
 	ukey := ikey.UserKey()
 	for _, f := range v.Levels[0] {
@@ -215,7 +218,7 @@ func (o *fileOverlayer) Done() {
 }
 
 func (v *Version) overlapLevel0(o overlayer, smallest, largest keys.InternalKey) {
-	ucmp := v.icmp.UserKeyComparator
+	ucmp := v.options.Comparator.UserKeyComparator
 	files := v.Levels[0]
 	defer o.Done()
 restart:
@@ -247,7 +250,7 @@ func (v *Version) overlapLeveln(o overlayer, level int, smallest, largest keys.I
 		v.overlapLevel0(o, smallest, largest)
 		return
 	}
-	ucmp := v.icmp.UserKeyComparator
+	ucmp := v.options.Comparator.UserKeyComparator
 	files := v.Levels[level]
 	o.Start()
 	defer o.Done()
@@ -285,12 +288,13 @@ func (v *Version) appendOverlappingFiles(files FileList, level int, smallest, la
 }
 
 func (v *Version) rangeOf(files FileList) (smallest, largest keys.InternalKey) {
+	icmp := v.options.Comparator
 	smallest, largest = files[0].Smallest, files[0].Largest
 	for _, f := range files[1:] {
-		if v.icmp.Compare(f.Smallest, smallest) < 0 {
+		if icmp.Compare(f.Smallest, smallest) < 0 {
 			smallest = f.Smallest
 		}
-		if v.icmp.Compare(f.Largest, largest) > 0 {
+		if icmp.Compare(f.Largest, largest) > 0 {
 			largest = f.Largest
 		}
 	}
@@ -298,19 +302,21 @@ func (v *Version) rangeOf(files FileList) (smallest, largest keys.InternalKey) {
 }
 
 func (v *Version) unionOf(smallest0, largest0, smallest1, largest1 keys.InternalKey) (smallest, largest keys.InternalKey) {
-	return keys.Min(v.icmp, smallest0, smallest1), keys.Max(v.icmp, largest0, largest1)
+	icmp := v.options.Comparator
+	return keys.Min(icmp, smallest0, smallest1), keys.Max(icmp, largest0, largest1)
 }
 
 func (v *Version) pickLevelInputs(c *Compaction) (smallest, largest keys.InternalKey) {
 	level := c.Level
 	files := v.Levels[level]
 	inputs := c.Inputs[0][:0]
+	icmp := v.options.Comparator
 	switch {
 	case len(v.CompactionPointers[level]) == 0:
 		inputs = append(inputs, files[0])
 	case level == 0:
 		for _, f := range files {
-			if v.icmp.Compare(f.Largest, v.CompactionPointers[level]) > 0 {
+			if icmp.Compare(f.Largest, v.CompactionPointers[level]) > 0 {
 				inputs = append(inputs, f)
 				goto find_overlapping
 			}
@@ -318,7 +324,7 @@ func (v *Version) pickLevelInputs(c *Compaction) (smallest, largest keys.Interna
 		inputs = append(inputs, files[0])
 	default:
 		n := len(files)
-		i := sort.Search(n, func(i int) bool { return v.icmp.Compare(files[i].Largest, v.CompactionPointers[level]) > 0 })
+		i := sort.Search(n, func(i int) bool { return icmp.Compare(files[i].Largest, v.CompactionPointers[level]) > 0 })
 		switch i {
 		case n:
 			inputs = append(inputs, files[0])
@@ -442,7 +448,7 @@ func (v *Version) snapshot(edit *Edit) {
 }
 
 func (v *Version) clone() *Version {
-	copy := &Version{icmp: v.icmp, cache: v.cache, number: v.number + 1}
+	copy := &Version{number: v.number + 1, options: v.options, cache: v.cache}
 	for level := 0; level < configs.NumberLevels; level++ {
 		copy.Levels[level] = v.Levels[level].Dup()
 	}

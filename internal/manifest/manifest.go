@@ -289,7 +289,7 @@ func Create(dbname string, opts *options.Options) (manifest *Manifest, err error
 	}
 
 	cache := table.NewCache(dbname, opts)
-	current := &Version{refs: 1, icmp: opts.Comparator, cache: cache}
+	current := &Version{refs: 1, options: opts, cache: cache}
 	return &Manifest{
 		dbname:         dbname,
 		currentName:    currentName,
@@ -331,7 +331,7 @@ func Recover(dbname string, opts *options.Options) (manifest *Manifest, err erro
 	builder.ManifestFile = manifestFile
 	builder.ManifestNumber = manifestNumber
 
-	current := &Version{refs: 1, icmp: opts.Comparator}
+	current := &Version{refs: 1, options: opts}
 	offset, err := builder.Build(current)
 	if err != nil {
 		manifestFile.Close()
