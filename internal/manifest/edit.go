@@ -34,12 +34,6 @@ var (
 	ErrCorruptEditComparatorName = errors.New("corrupt version edit: comparator name")
 )
 
-// LevelFileMeta includes a file's meta data and its corresponding level.
-type LevelFileMeta struct {
-	Level int
-	*FileMeta
-}
-
 type LevelFileNumber struct {
 	Level  int
 	Number uint64

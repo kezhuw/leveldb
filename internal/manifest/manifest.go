@@ -234,8 +234,8 @@ func (m *Manifest) Apply(edit *Edit) error {
 	return nil
 }
 
-func (m *Manifest) PickCompactions(registry *compaction.Registry) []*Compaction {
-	return m.current.pickCompactions(registry, m.NextFileNumber())
+func (m *Manifest) PickCompactions(registry *compaction.Registry, pendingFiles []FileList) []*Compaction {
+	return m.current.pickCompactions(registry, pendingFiles, m.NextFileNumber())
 }
 
 func Create(dbname string, opts *options.Options) (manifest *Manifest, err error) {

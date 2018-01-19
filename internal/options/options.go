@@ -16,6 +16,24 @@ const (
 	DefaultMaxOpenFiles          = 1000
 	DefaultBlockCacheCapacity    = 8 * 1024 * 1024
 	DefaultCompactionConcurrency = 1
+
+	// DefaultCompactionBytesPerSeek gives a default value for
+	// CompactionBytesPerSeek option based on following assumptions:
+	//   (1) One seek costs 10ms
+	//   (2) Writing or reading 1MB costs 10ms (100MB/s)
+	//   (3) A compaction of 1MB does 25MB of IO:
+	//         1MB read from this level
+	//         10-12MB read from next level (boundaries may be misaligned)
+	//         10-12MB written to next level
+	// This implies that 25 seeks cost the same as the compaction
+	// of 1MB of data.  I.e., one seek costs approximately the
+	// same as the compaction of 40KB of data. We are a little
+	// conservative and allow approximately one seek for every 16KB
+	// of data before triggering a compaction.    -- LevelDB (C++)
+	DefaultCompactionBytesPerSeek = 16 * 1024
+
+	DefaultMinimalAllowedOverlapSeeks  = 100
+	DefaultIterationBytesPerSampleSeek = 1024 * 1024
 )
 
 var DefaultInternalComparator keys.InternalComparator = keys.InternalComparator{UserKeyComparator: keys.BytewiseComparator}
@@ -27,12 +45,15 @@ type Options struct {
 	Logger      logger.LogCloser
 	FileSystem  file.FileSystem
 
-	BlockSize             int
-	BlockRestartInterval  int
-	WriteBufferSize       int
-	MaxOpenFiles          int
-	BlockCacheCapacity    int
-	CompactionConcurrency int
+	BlockSize                   int
+	BlockRestartInterval        int
+	WriteBufferSize             int
+	MaxOpenFiles                int
+	BlockCacheCapacity          int
+	CompactionConcurrency       int
+	CompactionBytesPerSeek      int
+	MinimalAllowedOverlapSeeks  int
+	IterationBytesPerSampleSeek int
 
 	CreateIfMissing bool
 	ErrorIfExists   bool
@@ -48,15 +69,18 @@ type WriteOptions struct {
 }
 
 var DefaultOptions = Options{
-	Comparator:            &DefaultInternalComparator,
-	Compression:           compress.SnappyCompression,
-	FileSystem:            file.DefaultFileSystem,
-	BlockSize:             DefaultBlockSize,
-	BlockRestartInterval:  DefaultBlockRestartInterval,
-	WriteBufferSize:       DefaultWriteBufferSize,
-	MaxOpenFiles:          DefaultMaxOpenFiles,
-	BlockCacheCapacity:    DefaultBlockCacheCapacity,
-	CompactionConcurrency: DefaultCompactionConcurrency,
+	Comparator:                  &DefaultInternalComparator,
+	Compression:                 compress.SnappyCompression,
+	FileSystem:                  file.DefaultFileSystem,
+	BlockSize:                   DefaultBlockSize,
+	BlockRestartInterval:        DefaultBlockRestartInterval,
+	WriteBufferSize:             DefaultWriteBufferSize,
+	MaxOpenFiles:                DefaultMaxOpenFiles,
+	BlockCacheCapacity:          DefaultBlockCacheCapacity,
+	CompactionConcurrency:       DefaultCompactionConcurrency,
+	CompactionBytesPerSeek:      DefaultCompactionBytesPerSeek,
+	MinimalAllowedOverlapSeeks:  DefaultMinimalAllowedOverlapSeeks,
+	IterationBytesPerSampleSeek: DefaultIterationBytesPerSampleSeek,
 }
 var DefaultReadOptions = ReadOptions{}
 var DefaultWriteOptions = WriteOptions{}

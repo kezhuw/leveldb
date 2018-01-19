@@ -66,10 +66,12 @@ type DB struct {
 	snapshots   snapshotList
 	snapshotsMu sync.Mutex
 
-	memtableEdit       chan *manifest.Edit
-	compactionEdit     chan compactionEdit
-	compactionResult   chan compactionResult
+	compactionFile     chan manifest.LevelFileMeta
 	compactionMemtable chan *memtable.MemTable
+
+	memtableEdit     chan *manifest.Edit
+	compactionEdit   chan compactionEdit
+	compactionResult chan compactionResult
 
 	obsoleteFilesChan chan uint64
 }
@@ -579,7 +581,11 @@ func (db *DB) get(key []byte, seq keys.Sequence, opts *options.ReadOptions) ([]b
 			return value, err
 		}
 	}
-	return ver.Get(ikey, opts)
+	value, seekThroughFile, err := ver.Get(ikey, opts)
+	if seekThroughFile.FileMeta != nil {
+		db.tryCompactFile(seekThroughFile)
+	}
+	return value, err
 }
 
 func (db *DB) All(opts *options.ReadOptions) iterator.Iterator {
@@ -650,6 +656,7 @@ func initDB(db *DB, name string, m *manifest.Manifest, locker io.Closer, opts *o
 	db.memtableEdit = make(chan *manifest.Edit, 1)
 	db.compactionEdit = make(chan compactionEdit, configs.NumberLevels)
 	db.compactionResult = make(chan compactionResult, configs.NumberLevels)
+	db.compactionFile = make(chan manifest.LevelFileMeta, 128)
 	db.compactionMemtable = make(chan *memtable.MemTable, 1)
 	db.obsoleteFilesChan = make(chan uint64, configs.NumberLevels)
 	db.snapshots.Init()

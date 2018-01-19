@@ -3,6 +3,7 @@ package leveldb
 import (
 	"github.com/kezhuw/leveldb/internal/compaction"
 	"github.com/kezhuw/leveldb/internal/compactor"
+	"github.com/kezhuw/leveldb/internal/configs"
 	"github.com/kezhuw/leveldb/internal/files"
 	"github.com/kezhuw/leveldb/internal/manifest"
 	"github.com/kezhuw/leveldb/internal/memtable"
@@ -18,6 +19,13 @@ type compactionResult struct {
 type compactionEdit struct {
 	level int
 	edit  *manifest.Edit
+}
+
+func (db *DB) tryCompactFile(file manifest.LevelFileMeta) {
+	select {
+	case db.compactionFile <- file:
+	default:
+	}
 }
 
 func (db *DB) tryMemoryCompaction() {
@@ -85,9 +93,11 @@ func (db *DB) serveCompaction(closing chan struct{}) {
 	var ongoingObsoleteFiles chan struct{}
 	var pendingMemtable *memtable.MemTable
 	var compactionErr, manifestErr error
+	var pendingFiles [configs.NumberLevels - 1]manifest.FileList
 	pendingObsoleteFiles := db.manifest.NextFileNumber()
 	registry.Recap(db.options.CompactionConcurrency)
 	for !(closing == nil && registry.Concurrency() == 0 && ongoingObsoleteFiles == nil && pendingObsoleteFiles == 0) {
+		var pendingLevelCompaction bool
 		select {
 		case tableNumber := <-db.obsoleteFilesChan:
 			pendingObsoleteFiles = db.updateObsoleteTableNumber(pendingObsoleteFiles, tableNumber)
@@ -104,14 +114,16 @@ func (db *DB) serveCompaction(closing chan struct{}) {
 			db.compactionEdit <- compactionEdit{level: -1, edit: edit}
 		case mem := <-db.compactionMemtable:
 			pendingMemtable = mem
+		case file := <-db.compactionFile:
+			pendingFiles[file.Level] = append(pendingFiles[file.Level], file.FileMeta)
+			pendingLevelCompaction = true
 		case result := <-db.compactionResult:
 			switch {
 			case result.err == nil:
 				db.appendVersion(result.level, result.version)
 				registry.Complete(result.level)
 				pendingObsoleteFiles = db.updateObsoleteTableNumber(pendingObsoleteFiles, registry.NextFileNumber(0))
-				compactions := db.manifest.PickCompactions(&registry)
-				db.startLevelCompactions(compactions)
+				pendingLevelCompaction = true
 			case result.version == nil:
 				if compactionErr == nil {
 					compactionErr = result.err
@@ -131,6 +143,10 @@ func (db *DB) serveCompaction(closing chan struct{}) {
 		}
 		if pendingMemtable != nil && db.startMemTableCompaction(&registry, pendingMemtable) {
 			pendingMemtable = nil
+		}
+		if pendingLevelCompaction {
+			compactions := db.manifest.PickCompactions(&registry, pendingFiles[:])
+			db.startLevelCompactions(compactions)
 		}
 		if pendingObsoleteFiles != 0 && ongoingObsoleteFiles == nil {
 			ongoingObsoleteFiles = make(chan struct{})

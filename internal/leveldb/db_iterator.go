@@ -1,6 +1,7 @@
 package leveldb
 
 import (
+	"math/rand"
 	"runtime"
 
 	"github.com/kezhuw/leveldb/internal/errors"
@@ -25,6 +26,9 @@ type dbIterator struct {
 	lastKey   []byte
 	lastValue []byte
 	parsedKey keys.ParsedInternalKey
+
+	rnd         *rand.Rand
+	sampleBytes int
 
 	tag        [8]byte // packed sequence and keys.Seek
 	keyScratch [256]byte
@@ -187,6 +191,28 @@ func (it *dbIterator) findNextEntry(skip bool) bool {
 	}
 }
 
+func (it *dbIterator) randomSampleBytes() int {
+	return it.rnd.Intn(2 * it.db.options.IterationBytesPerSampleSeek)
+}
+
+func (it *dbIterator) parseKey(ikey *keys.ParsedInternalKey) bool {
+	key := it.iterator.Key()
+	if !ikey.Parse(key) {
+		it.err = errors.ErrCorruptInternalKey
+		it.status = iterator.Invalid
+		return false
+	}
+	it.sampleBytes -= len(key) + len(it.iterator.Value())
+	for it.sampleBytes < 0 {
+		it.sampleBytes += it.randomSampleBytes()
+		seekOverlapFile := it.base.SeekOverlap(key, nil)
+		if seekOverlapFile.FileMeta != nil {
+			it.db.tryCompactFile(seekOverlapFile)
+		}
+	}
+	return true
+}
+
 func (it *dbIterator) findPrevEntry() bool {
 	if !it.iterator.Valid() {
 		it.err = it.iterator.Err()
@@ -198,8 +224,6 @@ func (it *dbIterator) findPrevEntry() bool {
 	it.status = iterator.Invalid
 	for {
 		if !ikey.Parse(it.iterator.Key()) {
-			it.err = errors.ErrCorruptInternalKey
-			it.status = iterator.Invalid
 			return false
 		}
 		if ikey.Sequence <= it.sequence {
@@ -235,15 +259,18 @@ func (it *dbIterator) findPrevEntry() bool {
 }
 
 func newDBIterator(db *DB, base *manifest.Version, seq keys.Sequence, it iterator.Iterator) iterator.Iterator {
+	rnd := rand.New(rand.NewSource(rand.Int63()))
 	dbIt := &dbIterator{
 		db:       db,
 		base:     base,
 		ucmp:     db.options.Comparator.UserKeyComparator,
 		iterator: it,
 		sequence: seq,
+		rnd:      rnd,
 	}
 	runtime.SetFinalizer(dbIt, (*dbIterator).finalize)
 	keys.CombineTag(dbIt.tag[:], seq, keys.Seek)
 	dbIt.lastKey = dbIt.keyScratch[:0]
+	dbIt.sampleBytes = dbIt.randomSampleBytes()
 	return dbIt
 }

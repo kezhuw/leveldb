@@ -3,21 +3,67 @@ package manifest
 import (
 	"fmt"
 	"sort"
+	"sync/atomic"
 
 	"github.com/kezhuw/leveldb/internal/keys"
 )
 
 // FileMeta contains meta info for a sorted table.
 type FileMeta struct {
+	// Number of overlap seeks to next level(or file in level 0) before we
+	// decide to compact this file to next level.
+	allowedOverlapSeeks int64
+
 	Number   uint64
 	Size     uint64
 	Smallest keys.InternalKey
 	Largest  keys.InternalKey
 }
 
+func (f *FileMeta) resetAllowedSeeks(compactionBytesCost int, minimalSeeks int) {
+	allowedOverlapSeeks := int64(f.Size / uint64(compactionBytesCost))
+	if allowedOverlapSeeks < int64(minimalSeeks) {
+		allowedOverlapSeeks = int64(minimalSeeks)
+	}
+	f.allowedOverlapSeeks = allowedOverlapSeeks
+}
+
+// seekOverlap consumes allowed seeks due to overlapp and returns whether
+// caller should compact this file.
+func (f *FileMeta) seekOverlap() bool {
+	return atomic.AddInt64(&f.allowedOverlapSeeks, -1) == 0
+}
+
+// seekThrough consumes allowed seeks due to missing read and returns whether
+// caller should compact this file.
+func (f *FileMeta) seekThrough() bool {
+	r := atomic.AddInt64(&f.allowedOverlapSeeks, -2)
+	return r <= 0 && r > -2
+}
+
 // GoString implements fmt.GoStringer.
 func (f *FileMeta) GoString() string {
 	return fmt.Sprintf("%#v", *f)
+}
+
+// LevelFileMeta includes a file's meta data and its corresponding level.
+type LevelFileMeta struct {
+	Level int
+	*FileMeta
+}
+
+func (f LevelFileMeta) seekOverlap() LevelFileMeta {
+	if file := f.FileMeta; file != nil && file.seekOverlap() {
+		return f
+	}
+	return LevelFileMeta{}
+}
+
+func (f LevelFileMeta) seekThrough() LevelFileMeta {
+	if file := f.FileMeta; file != nil && file.seekThrough() {
+		return f
+	}
+	return LevelFileMeta{}
 }
 
 // FileList represents a list of table files.

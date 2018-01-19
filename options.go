@@ -83,6 +83,29 @@ type Options struct {
 	// no limitation on concurrent compactions.
 	CompactionConcurrency int
 
+	// CompactionBytesPerSeek states that one seek cost approximately equal time
+	// to compact specified number of data.
+	//
+	// We decide to compact a file after a certain number of overlap seeks, this
+	// way for keys in range we reduce potential seeks by one after compaction.
+	// We use CompactionBytesPerSeek and MinimalAllowedOverlapSeeks to calculate
+	// the number of allowed overlap seeks for a file.
+	//
+	// The default value is 16KiB, which means that one seek cost approximately
+	// equal time to compact 16KiB data.
+	CompactionBytesPerSeek int
+
+	// MinimalAllowedOverlapSeeks specifies minimal allowed overlap seeks per table file.
+	//
+	// The default value is 100.
+	MinimalAllowedOverlapSeeks int
+
+	// IterationBytesPerSampleSeek specifies average iteration bytes for one sample
+	// seek to detect overlap file.
+	//
+	// The default value is 1MiB.
+	IterationBytesPerSampleSeek int
+
 	// Filter specifys a Filter to filter out unnecessary disk reads when looking for
 	// a specific key. The filter is also used to generate filter data when building
 	// table files.
@@ -203,6 +226,27 @@ func (opts *Options) getCompactionConcurrency() int {
 	}
 }
 
+func (opts *Options) getCompactionBytesPerSeek() int {
+	if opts.CompactionBytesPerSeek <= 0 {
+		return options.DefaultCompactionBytesPerSeek
+	}
+	return opts.CompactionBytesPerSeek
+}
+
+func (opts *Options) getMinimalAllowedOverlapSeeks() int {
+	if opts.MinimalAllowedOverlapSeeks <= 0 {
+		return options.DefaultMinimalAllowedOverlapSeeks
+	}
+	return opts.MinimalAllowedOverlapSeeks
+}
+
+func (opts *Options) getIterationBytesPerSampleSeek() int {
+	if opts.IterationBytesPerSampleSeek <= 0 {
+		return options.DefaultIterationBytesPerSampleSeek
+	}
+	return opts.IterationBytesPerSampleSeek
+}
+
 func convertOptions(opts *Options) *options.Options {
 	if opts == nil {
 		return &options.DefaultOptions
@@ -216,6 +260,9 @@ func convertOptions(opts *Options) *options.Options {
 	iopts.MaxOpenFiles = opts.getMaxOpenFiles()
 	iopts.BlockCacheCapacity = opts.getBlockCacheCapacity()
 	iopts.CompactionConcurrency = opts.getCompactionConcurrency()
+	iopts.CompactionBytesPerSeek = opts.getCompactionBytesPerSeek()
+	iopts.MinimalAllowedOverlapSeeks = opts.getMinimalAllowedOverlapSeeks()
+	iopts.IterationBytesPerSampleSeek = opts.getIterationBytesPerSampleSeek()
 	iopts.Filter = opts.getFilter()
 	iopts.Logger = opts.getLogger()
 	iopts.FileSystem = opts.getFileSystem()

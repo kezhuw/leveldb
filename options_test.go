@@ -137,67 +137,82 @@ func matchFileSystem(fs file.FileSystem, buf *bytes.Buffer) bool {
 }
 
 type optionsTest struct {
-	options               *Options
-	comparator            keys.Comparator
-	compression           compress.Type
-	blockSize             int
-	blockRestartInterval  int
-	writeBufferSize       int
-	maxOpenFiles          int
-	blockCacheCapacity    int
-	compactionConcurrency int
-	filterBuffer          *bytes.Buffer
-	loggerBuffer          *bytes.Buffer
-	fsBuffer              *bytes.Buffer
+	options                     *Options
+	comparator                  keys.Comparator
+	compression                 compress.Type
+	blockSize                   int
+	blockRestartInterval        int
+	writeBufferSize             int
+	maxOpenFiles                int
+	blockCacheCapacity          int
+	compactionConcurrency       int
+	compactionBytesPerSeek      int
+	minimalAllowedOverlapSeeks  int
+	iterationBytesPerSampleSeek int
+	filterBuffer                *bytes.Buffer
+	loggerBuffer                *bytes.Buffer
+	fsBuffer                    *bytes.Buffer
 }
 
 var optionsTests = []optionsTest{
 	{
-		comparator:            keys.BytewiseComparator,
-		compression:           compress.SnappyCompression,
-		blockSize:             options.DefaultBlockSize,
-		blockRestartInterval:  options.DefaultBlockRestartInterval,
-		writeBufferSize:       options.DefaultWriteBufferSize,
-		maxOpenFiles:          options.DefaultMaxOpenFiles,
-		blockCacheCapacity:    options.DefaultBlockCacheCapacity,
-		compactionConcurrency: options.DefaultCompactionConcurrency,
+		comparator:                  keys.BytewiseComparator,
+		compression:                 compress.SnappyCompression,
+		blockSize:                   options.DefaultBlockSize,
+		blockRestartInterval:        options.DefaultBlockRestartInterval,
+		writeBufferSize:             options.DefaultWriteBufferSize,
+		maxOpenFiles:                options.DefaultMaxOpenFiles,
+		blockCacheCapacity:          options.DefaultBlockCacheCapacity,
+		compactionConcurrency:       options.DefaultCompactionConcurrency,
+		compactionBytesPerSeek:      options.DefaultCompactionBytesPerSeek,
+		minimalAllowedOverlapSeeks:  options.DefaultMinimalAllowedOverlapSeeks,
+		iterationBytesPerSampleSeek: options.DefaultIterationBytesPerSampleSeek,
 	},
 	{
-		options:               &Options{Compression: SnappyCompression, CompactionConcurrency: UnlimitedCompactionConcurrency},
-		comparator:            keys.BytewiseComparator,
-		compression:           compress.SnappyCompression,
-		blockSize:             options.DefaultBlockSize,
-		blockRestartInterval:  options.DefaultBlockRestartInterval,
-		writeBufferSize:       options.DefaultWriteBufferSize,
-		maxOpenFiles:          options.DefaultMaxOpenFiles,
-		blockCacheCapacity:    options.DefaultBlockCacheCapacity,
-		compactionConcurrency: compaction.UnlimitedCompactionConcurrency,
+		options:                     &Options{Compression: SnappyCompression, CompactionConcurrency: UnlimitedCompactionConcurrency},
+		comparator:                  keys.BytewiseComparator,
+		compression:                 compress.SnappyCompression,
+		blockSize:                   options.DefaultBlockSize,
+		blockRestartInterval:        options.DefaultBlockRestartInterval,
+		writeBufferSize:             options.DefaultWriteBufferSize,
+		maxOpenFiles:                options.DefaultMaxOpenFiles,
+		blockCacheCapacity:          options.DefaultBlockCacheCapacity,
+		compactionConcurrency:       compaction.UnlimitedCompactionConcurrency,
+		compactionBytesPerSeek:      options.DefaultCompactionBytesPerSeek,
+		minimalAllowedOverlapSeeks:  options.DefaultMinimalAllowedOverlapSeeks,
+		iterationBytesPerSampleSeek: options.DefaultIterationBytesPerSampleSeek,
 	},
 	{
 		options: &Options{
-			Comparator:            keys.BytewiseComparator,
-			Compression:           NoCompression,
-			BlockSize:             options.DefaultBlockSize * 4,
-			BlockRestartInterval:  options.DefaultBlockRestartInterval + 2,
-			WriteBufferSize:       options.DefaultWriteBufferSize + 4096,
-			MaxOpenFiles:          options.DefaultMaxOpenFiles + 512,
-			BlockCacheCapacity:    options.DefaultBlockCacheCapacity + 4096,
-			CompactionConcurrency: 5,
-			Filter:                newBufferFilter(filterBuffer),
-			Logger:                newBufferLogger(loggerBuffer),
-			FileSystem:            newBufferFileSystem(fsBuffer),
+			Comparator:                  keys.BytewiseComparator,
+			Compression:                 NoCompression,
+			BlockSize:                   options.DefaultBlockSize * 4,
+			BlockRestartInterval:        options.DefaultBlockRestartInterval + 2,
+			WriteBufferSize:             options.DefaultWriteBufferSize + 4096,
+			MaxOpenFiles:                options.DefaultMaxOpenFiles + 512,
+			BlockCacheCapacity:          options.DefaultBlockCacheCapacity + 4096,
+			CompactionConcurrency:       5,
+			Filter:                      newBufferFilter(filterBuffer),
+			Logger:                      newBufferLogger(loggerBuffer),
+			FileSystem:                  newBufferFileSystem(fsBuffer),
+			CompactionBytesPerSeek:      32 * 1024,
+			MinimalAllowedOverlapSeeks:  50,
+			IterationBytesPerSampleSeek: 64 * 1024,
 		},
-		comparator:            keys.BytewiseComparator,
-		compression:           compress.NoCompression,
-		blockSize:             options.DefaultBlockSize * 4,
-		blockRestartInterval:  options.DefaultBlockRestartInterval + 2,
-		writeBufferSize:       options.DefaultWriteBufferSize + 4096,
-		maxOpenFiles:          options.DefaultMaxOpenFiles + 512,
-		blockCacheCapacity:    options.DefaultBlockCacheCapacity + 4096,
-		compactionConcurrency: 5,
-		filterBuffer:          filterBuffer,
-		loggerBuffer:          loggerBuffer,
-		fsBuffer:              fsBuffer,
+		comparator:                  keys.BytewiseComparator,
+		compression:                 compress.NoCompression,
+		blockSize:                   options.DefaultBlockSize * 4,
+		blockRestartInterval:        options.DefaultBlockRestartInterval + 2,
+		writeBufferSize:             options.DefaultWriteBufferSize + 4096,
+		maxOpenFiles:                options.DefaultMaxOpenFiles + 512,
+		blockCacheCapacity:          options.DefaultBlockCacheCapacity + 4096,
+		compactionConcurrency:       5,
+		compactionBytesPerSeek:      32 * 1024,
+		minimalAllowedOverlapSeeks:  50,
+		iterationBytesPerSampleSeek: 64 * 1024,
+		filterBuffer:                filterBuffer,
+		loggerBuffer:                loggerBuffer,
+		fsBuffer:                    fsBuffer,
 	},
 }
 
@@ -230,6 +245,15 @@ func TestOptions(t *testing.T) {
 		}
 		if compactionConcurrency := opts.getCompactionConcurrency(); compactionConcurrency != test.compactionConcurrency {
 			t.Errorf("test=%d-CompactionConcurrency got=%d want=%v", i, compactionConcurrency, test.compactionConcurrency)
+		}
+		if compactionBytesPerSeek := opts.getCompactionBytesPerSeek(); compactionBytesPerSeek != test.compactionBytesPerSeek {
+			t.Errorf("test=%d-CompactionBytesPerSeek got=%d want=%v", i, compactionBytesPerSeek, test.compactionBytesPerSeek)
+		}
+		if minimalAllowedOverlapSeeks := opts.getMinimalAllowedOverlapSeeks(); minimalAllowedOverlapSeeks != test.minimalAllowedOverlapSeeks {
+			t.Errorf("test=%d-MinimalAllowedOverlapSeeks got=%d want=%v", i, minimalAllowedOverlapSeeks, test.minimalAllowedOverlapSeeks)
+		}
+		if iterationBytesPerSampleSeek := opts.getIterationBytesPerSampleSeek(); iterationBytesPerSampleSeek != test.iterationBytesPerSampleSeek {
+			t.Errorf("test=%d-IterationBytesPerSampleSeek got=%d want=%v", i, iterationBytesPerSampleSeek, test.iterationBytesPerSampleSeek)
 		}
 		if filter := opts.getFilter(); !matchFilter(filter, test.filterBuffer) {
 			t.Errorf("test=%d-Filter got=%v", i, filter)
@@ -269,6 +293,15 @@ func TestConvertOptions(t *testing.T) {
 		}
 		if compactionConcurrency := opts.CompactionConcurrency; compactionConcurrency != test.compactionConcurrency {
 			t.Errorf("test=%d-CompactionConcurrency got=%d want=%v", i, compactionConcurrency, test.compactionConcurrency)
+		}
+		if compactionBytesPerSeek := opts.CompactionBytesPerSeek; compactionBytesPerSeek != test.compactionBytesPerSeek {
+			t.Errorf("test=%d-CompactionBytesPerSeek got=%d want=%v", i, compactionBytesPerSeek, test.compactionBytesPerSeek)
+		}
+		if minimalAllowedOverlapSeeks := opts.MinimalAllowedOverlapSeeks; minimalAllowedOverlapSeeks != test.minimalAllowedOverlapSeeks {
+			t.Errorf("test=%d-MinimalAllowedOverlapSeeks got=%d want=%v", i, minimalAllowedOverlapSeeks, test.minimalAllowedOverlapSeeks)
+		}
+		if iterationBytesPerSampleSeek := opts.IterationBytesPerSampleSeek; iterationBytesPerSampleSeek != test.iterationBytesPerSampleSeek {
+			t.Errorf("test=%d-IterationBytesPerSampleSeek got=%d want=%v", i, iterationBytesPerSampleSeek, test.iterationBytesPerSampleSeek)
 		}
 		if filter := opts.Filter; !matchFilter(filter, test.filterBuffer) {
 			t.Errorf("test=%d-Filter got=%v", i, filter)

@@ -89,13 +89,12 @@ func (v *Version) AppendIterators(iters []iterator.Iterator, opts *options.ReadO
 	for _, f := range v.Levels[0] {
 		iters = append(iters, v.cache.NewIterator(f.Number, f.Size, opts))
 	}
-	icmp := v.options.Comparator
 	for level := 1; level < len(v.Levels); level++ {
 		files := v.Levels[level]
 		if len(files) == 0 {
 			continue
 		}
-		iters = append(iters, newSortedFileIterator(icmp, files, v.cache, opts))
+		iters = append(iters, newSortedFileIterator(v.options.Comparator, files, v.cache, opts))
 	}
 	return iters
 }
@@ -140,13 +139,21 @@ func (v *Version) match(m matcher, ikey keys.InternalKey, opts *options.ReadOpti
 	return false
 }
 
-func (v *Version) Get(ikey keys.InternalKey, opts *options.ReadOptions) ([]byte, error) {
+func (v *Version) Get(ikey keys.InternalKey, opts *options.ReadOptions) ([]byte, LevelFileMeta, error) {
 	var matcher getMatcher
 	matcher.cache = v.cache
 	if v.match(&matcher, ikey, opts) {
-		return matcher.value, matcher.err
+		return matcher.value, matcher.seekThrough.seekThrough(), matcher.err
 	}
-	return nil, errors.ErrNotFound
+	return nil, matcher.seekThrough.seekThrough(), errors.ErrNotFound
+}
+
+func (v *Version) SeekOverlap(ikey keys.InternalKey, opts *options.ReadOptions) LevelFileMeta {
+	var matcher seekOverlapMatcher
+	if v.match(&matcher, ikey, opts) {
+		return matcher.seekOverlap.seekOverlap()
+	}
+	return LevelFileMeta{}
 }
 
 func (v *Version) computeCompactionScore() {
@@ -306,12 +313,15 @@ func (v *Version) unionOf(smallest0, largest0, smallest1, largest1 keys.Internal
 	return keys.Min(icmp, smallest0, smallest1), keys.Max(icmp, largest0, largest1)
 }
 
-func (v *Version) pickLevelInputs(c *Compaction) (smallest, largest keys.InternalKey) {
+func (v *Version) pickLevelInputs(c *Compaction, inputs FileList) (smallest, largest keys.InternalKey) {
 	level := c.Level
 	files := v.Levels[level]
-	inputs := c.Inputs[0][:0]
 	icmp := v.options.Comparator
 	switch {
+	case len(inputs) != 0 && level == 0:
+		inputs.SortByNewestFileNumber()
+	case len(inputs) != 0:
+		inputs.SortBySmallestKey(icmp)
 	case len(v.CompactionPointers[level]) == 0:
 		inputs = append(inputs, files[0])
 	case level == 0:
@@ -333,7 +343,7 @@ func (v *Version) pickLevelInputs(c *Compaction) (smallest, largest keys.Interna
 		}
 	}
 find_overlapping:
-	smallest, largest = inputs[0].Smallest, inputs[0].Largest
+	smallest, largest = v.rangeOf(inputs)
 	if level == 0 {
 		inputs = v.appendOverlappingFiles(inputs[:0], 0, smallest, largest)
 		smallest, largest = v.rangeOf(inputs)
@@ -372,10 +382,10 @@ func (v *Version) expandLevelInputs(c *Compaction, smallest, largest *keys.Inter
 	return v.unionOf(smallest0, largest0, smallest1, largest1)
 }
 
-func (v *Version) createCompaction(level int, registration *compaction.Registration) *Compaction {
+func (v *Version) newLevelCompaction(registration *compaction.Registration, level int, inputs FileList) *Compaction {
 	c := &Compaction{Level: level, Base: v, Registration: registration}
 
-	smallest, largest := v.pickLevelInputs(c)
+	smallest, largest := v.pickLevelInputs(c, inputs)
 	allSmallest, allLargest := v.expandLevelInputs(c, &smallest, &largest)
 
 	if grandparentsLevel := c.Level + 2; grandparentsLevel < configs.NumberLevels {
@@ -387,8 +397,7 @@ func (v *Version) createCompaction(level int, registration *compaction.Registrat
 	return c
 }
 
-func (v *Version) pickCompactions(registry *compaction.Registry, nextFileNumber uint64) []*Compaction {
-	var compactions []*Compaction
+func (v *Version) appendScoreCompactions(compactions []*Compaction, registry *compaction.Registry, nextFileNumber uint64) []*Compaction {
 	for _, score := range v.scores {
 		level := score.level
 		registration := registry.Register(level, level+1)
@@ -396,8 +405,45 @@ func (v *Version) pickCompactions(registry *compaction.Registry, nextFileNumber 
 			continue
 		}
 		registration.NextFileNumber = nextFileNumber
-		compactions = append(compactions, v.createCompaction(level, registration))
+		compactions = append(compactions, v.newLevelCompaction(registration, level, nil))
 	}
+	return compactions
+}
+
+func (v *Version) appendFileCompactions(compactions []*Compaction, registry *compaction.Registry, levels []FileList, nextFileNumber uint64) []*Compaction {
+	for level, files := range levels {
+		n := len(files)
+		if n == 0 {
+			continue
+		}
+		i := 0
+		for i < n {
+			f := files[i]
+			if v.Levels[level].IndexFile(f.Number) == -1 {
+				n--
+				files[i], files[n] = files[n], nil
+				continue
+			}
+			i++
+		}
+		files = files[:i]
+		levels[level] = files
+		if i != 0 {
+			registration := registry.Register(level, level+1)
+			if registration == nil {
+				continue
+			}
+			registration.NextFileNumber = nextFileNumber
+			compactions = append(compactions, v.newLevelCompaction(registration, level, files.Dup()))
+		}
+	}
+	return compactions
+}
+
+func (v *Version) pickCompactions(registry *compaction.Registry, pendingFiles []FileList, nextFileNumber uint64) []*Compaction {
+	var compactions []*Compaction
+	compactions = v.appendScoreCompactions(compactions, registry, nextFileNumber)
+	compactions = v.appendFileCompactions(compactions, registry, pendingFiles, nextFileNumber)
 	return compactions
 }
 
@@ -464,7 +510,9 @@ func (v *Version) apply(edit *Edit) error {
 		}
 	}
 	for _, added := range edit.AddedFiles {
-		v.Levels[added.Level] = append(v.Levels[added.Level], added.FileMeta)
+		f := added.FileMeta
+		f.resetAllowedSeeks(v.options.CompactionBytesPerSeek, v.options.MinimalAllowedOverlapSeeks)
+		v.Levels[added.Level] = append(v.Levels[added.Level], f)
 	}
 	for _, pointer := range edit.CompactPointers {
 		v.CompactionPointers[pointer.Level] = pointer.Largest
