@@ -97,7 +97,7 @@ func (v *Version) AppendIterators(iters []iterator.Iterator, opts *options.ReadO
 	return iters
 }
 
-func (v *Version) Get(ikey keys.InternalKey, opts *options.ReadOptions) ([]byte, error) {
+func (v *Version) match(m matcher, ikey keys.InternalKey, opts *options.ReadOptions) bool {
 	// If internal key a < b, two possibilities exist:
 	//   * a's user key is smaller than b's user key.
 	//   * a's user key is same with b, but a has a larger sequence(packed with keys.Kind).
@@ -119,9 +119,8 @@ func (v *Version) Get(ikey keys.InternalKey, opts *options.ReadOptions) ([]byte,
 		if icmp.Compare(ikey, []byte(f.Largest)) > 0 {
 			continue
 		}
-		value, err, ok := v.cache.Get(f.Number, f.Size, ikey, opts)
-		if ok {
-			return value, err
+		if m.Match(0, f, ikey, opts) {
+			return true
 		}
 	}
 	for level := 1; level < configs.NumberLevels; level++ {
@@ -131,10 +130,18 @@ func (v *Version) Get(ikey keys.InternalKey, opts *options.ReadOptions) ([]byte,
 		if i == n || ucmp.Compare(ukey, files[i].Smallest.UserKey()) < 0 {
 			continue
 		}
-		value, err, ok := v.cache.Get(files[i].Number, files[i].Size, ikey, opts)
-		if ok {
-			return value, err
+		if m.Match(level, files[i], ikey, opts) {
+			return true
 		}
+	}
+	return false
+}
+
+func (v *Version) Get(ikey keys.InternalKey, opts *options.ReadOptions) ([]byte, error) {
+	var matcher getMatcher
+	matcher.cache = v.cache
+	if v.match(&matcher, ikey, opts) {
+		return matcher.value, matcher.err
 	}
 	return nil, errors.ErrNotFound
 }
