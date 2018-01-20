@@ -6,9 +6,9 @@ import (
 )
 
 const (
-	// UnlimitedCompactionConcurrency is a cap for Registry which enforce
-	// no concurrent compaction limitation.
-	UnlimitedCompactionConcurrency = -1
+	// MaxCompactionConcurrency is a cap for Registry which enforce no
+	// concurrent compaction limitation.
+	MaxCompactionConcurrency = -1
 )
 
 // Registration represents an registered compaction.

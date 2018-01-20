@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	// UnlimitedCompactionConcurrency specifies than there is no limitation
-	// on compaction concurrency.
-	UnlimitedCompactionConcurrency = compaction.UnlimitedCompactionConcurrency
+	// MaxCompactionConcurrency maximize compaction concurrency as possible.
+	// Caution that compaction is a disk drive sensitive task, max compaction
+	// concurrency usually doesn't mean good performance.
+	MaxCompactionConcurrency = compaction.MaxCompactionConcurrency
 )
 
 // CompressionType defines compression methods to compress a table block.
@@ -79,8 +80,8 @@ type Options struct {
 
 	// CompactionConcurrency specifies max allowed concurrent compactions.
 	//
-	// The default value is 1, use UnlimitedCompactionConcurrency to enforce
-	// no limitation on concurrent compactions.
+	// The default value is 1, use MaxCompactionConcurrency to maximize compaction
+	// concurrency as poosible.
 	CompactionConcurrency int
 
 	// CompactionBytesPerSeek states that one seek cost approximately equal time
@@ -220,7 +221,7 @@ func (opts *Options) getCompactionConcurrency() int {
 	case opts.CompactionConcurrency == 0:
 		return options.DefaultCompactionConcurrency
 	case opts.CompactionConcurrency < 0:
-		return compaction.UnlimitedCompactionConcurrency
+		return compaction.MaxCompactionConcurrency
 	default:
 		return opts.CompactionConcurrency
 	}

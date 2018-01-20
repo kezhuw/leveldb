@@ -169,7 +169,7 @@ var optionsTests = []optionsTest{
 		iterationBytesPerSampleSeek: options.DefaultIterationBytesPerSampleSeek,
 	},
 	{
-		options:                     &Options{Compression: SnappyCompression, CompactionConcurrency: UnlimitedCompactionConcurrency},
+		options:                     &Options{Compression: SnappyCompression, CompactionConcurrency: MaxCompactionConcurrency},
 		comparator:                  keys.BytewiseComparator,
 		compression:                 compress.SnappyCompression,
 		blockSize:                   options.DefaultBlockSize,
@@ -177,7 +177,7 @@ var optionsTests = []optionsTest{
 		writeBufferSize:             options.DefaultWriteBufferSize,
 		maxOpenFiles:                options.DefaultMaxOpenFiles,
 		blockCacheCapacity:          options.DefaultBlockCacheCapacity,
-		compactionConcurrency:       compaction.UnlimitedCompactionConcurrency,
+		compactionConcurrency:       compaction.MaxCompactionConcurrency,
 		compactionBytesPerSeek:      options.DefaultCompactionBytesPerSeek,
 		minimalAllowedOverlapSeeks:  options.DefaultMinimalAllowedOverlapSeeks,
 		iterationBytesPerSampleSeek: options.DefaultIterationBytesPerSampleSeek,
