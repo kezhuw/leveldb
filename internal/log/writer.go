@@ -5,15 +5,13 @@ import (
 
 	"github.com/kezhuw/leveldb/internal/crc"
 	"github.com/kezhuw/leveldb/internal/endian"
-	"github.com/kezhuw/leveldb/internal/iovecs"
 )
 
 type Writer struct {
-	w           iovecs.Writer
+	w           io.Writer
 	err         error
 	offset      int64
-	iovecs      [][]byte
-	headers     []header
+	blockBuffer []byte
 	blockOffset int
 	blockSize   int
 }
@@ -23,7 +21,13 @@ func newWriter(w io.Writer, blockSize int, offset int64) *Writer {
 		blockSize = defaultBlockSize
 	}
 	blockOffset := int(offset % int64(blockSize))
-	return &Writer{w: iovecs.NewWriter(w), offset: offset, blockOffset: blockOffset, blockSize: blockSize}
+	return &Writer{
+		w:           w,
+		offset:      offset,
+		blockBuffer: make([]byte, blockSize),
+		blockOffset: blockOffset,
+		blockSize:   blockSize,
+	}
 }
 
 func NewWriter(w io.Writer, offset int64) *Writer {
@@ -36,13 +40,6 @@ func (w *Writer) Err() error {
 
 func (w *Writer) Offset() int64 {
 	return w.offset
-}
-
-func (w *Writer) header(i int) []byte {
-	if len(w.headers) <= i {
-		w.headers = make([]header, i+1)
-	}
-	return w.headers[i][:]
 }
 
 func calcBlockType(begin, end bool) int {
@@ -66,16 +63,22 @@ func (w *Writer) Write(b []byte) error {
 	case len(b) == 0:
 		return nil
 	}
-	blockSize := w.blockSize
 	begin, end := true, false
-	offset, iovecs := w.blockOffset, w.iovecs[:0]
-	for i := 0; true; i++ {
-		leftover := blockSize - offset
+	blockOffset, blockSize := w.blockOffset, w.blockSize
+	for !end {
+		leftover := blockSize - blockOffset
 		if leftover < headerSize {
 			if leftover != 0 {
-				iovecs = append(iovecs, trailer[:leftover])
+				copy(w.blockBuffer[blockOffset:], trailer[:leftover])
 			}
-			offset = 0
+			n, err := w.w.Write(w.blockBuffer[w.blockOffset:])
+			if err != nil {
+				w.err = err
+				return err
+			}
+			w.offset += int64(n)
+			w.blockOffset = 0
+			blockOffset = 0
 			leftover = blockSize
 		}
 		length := leftover - headerSize
@@ -85,38 +88,22 @@ func (w *Writer) Write(b []byte) error {
 		}
 		typ := calcBlockType(begin, end)
 		sum := crc.Update(typeChecksums[typ], b[:length]).Value()
-		head := w.header(i)
+		head := w.blockBuffer[blockOffset : blockOffset+headerSize]
 		endian.PutUint32(head[:4], sum)
 		endian.PutUint16(head[4:6], uint16(length))
 		head[6] = byte(typ)
-		switch length != 0 {
-		case true:
-			iovecs = append(iovecs, head, b[:length])
-		default:
-			iovecs = append(iovecs, head)
-		}
-		offset += headerSize + length
-		if end {
-			break
-		}
+		blockOffset += headerSize
+		copy(w.blockBuffer[blockOffset:], b[:length])
+		blockOffset += length
 		begin = false
 		b = b[length:]
 	}
-	n, err := w.w.Writev(iovecs...)
+	n, err := w.w.Write(w.blockBuffer[w.blockOffset:blockOffset])
 	if err != nil {
-		zeroIOVecs(iovecs)
 		w.err = err
 		return err
 	}
-	zeroIOVecs(iovecs)
-	w.blockOffset, w.iovecs = offset, iovecs
-	w.offset += n
+	w.blockOffset = blockOffset
+	w.offset += int64(n)
 	return nil
-}
-
-func zeroIOVecs(vecs [][]byte) {
-	for i, n := 0, len(vecs); i < n; i++ {
-		// let gc to collect unused slices
-		vecs[i] = nil
-	}
 }
