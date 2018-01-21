@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"sort"
 	"sync"
-	"time"
 
 	"github.com/kezhuw/leveldb/internal/batch"
 	"github.com/kezhuw/leveldb/internal/compactor"
@@ -60,8 +59,9 @@ type DB struct {
 	manifestErrChan   chan error
 	compactionErrChan chan error
 
-	nextLogFile   chan file.File
-	nextLogNumber uint64
+	nextLogFile    chan file.File
+	nextLogNumber  uint64
+	nextLogFileErr chan error
 
 	snapshots   snapshotList
 	snapshotsMu sync.Mutex
@@ -243,54 +243,13 @@ func (db *DB) recoverLogs(logs []uint64) error {
 	return nil
 }
 
-func (db *DB) removeTableFiles(numbers []uint64) {
-	for _, tableNumber := range numbers {
-		db.fs.Remove(files.TableFileName(db.name, tableNumber))
-	}
-}
-
-func (db *DB) wakeupRequest() {
-	select {
-	case db.requestw <- struct{}{}:
-	default:
-	}
-}
-
 func (db *DB) appendVersion(level int, version *manifest.Version) {
-	// Request goroutine may be throttled due to too many files in level 0.
-	defer db.wakeupRequest()
+	defer db.wakeupWrite(level)
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	db.manifest.Append(version)
 	if level == -1 {
 		db.imm = nil
-	}
-}
-
-func (db *DB) tryOpenNextLog() {
-	if db.imm == nil && db.nextLogNumber == 0 {
-		db.nextLogNumber, _ = db.manifest.NewFileNumber()
-		db.bgGroup.Add(1)
-		go db.openNextLog()
-	}
-}
-
-func (db *DB) openNextLog() {
-	fileName := files.LogFileName(db.name, db.nextLogNumber)
-	var timeout time.Duration
-	for {
-		f, err := db.fs.Open(fileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
-		if err == nil {
-			db.nextLogFile <- f
-			return
-		}
-		timeout += 2*timeout + 5*time.Second
-		select {
-		case <-db.bgClosing:
-			db.nextLogFile <- nil
-			return
-		case <-time.After(timeout):
-		}
 	}
 }
 
@@ -322,190 +281,6 @@ func (db *DB) getSmallestSnapshot() keys.Sequence {
 		return db.manifest.LastSequence()
 	}
 	return db.snapshots.Oldest()
-}
-
-func (db *DB) switchMemTable() {
-	if db.mem.Empty() {
-		return
-	}
-	mem := memtable.New(db.options.Comparator)
-	db.mu.Lock()
-	db.imm = db.mem
-	db.mem = mem
-	db.mu.Unlock()
-	db.tryMemoryCompaction()
-}
-
-func (db *DB) openLog(f file.File, number uint64) {
-	db.log = log.NewWriter(f, 0)
-	db.logErr = nil
-	if db.logFile != nil {
-		db.logFile.Close()
-	}
-	db.logFile = f
-	db.logNumber = number
-	db.switchMemTable()
-}
-
-func (db *DB) closeLog(err error) {
-	db.log = nil
-	db.logErr = err
-	if db.logFile != nil {
-		db.logFile.Close()
-		db.logFile = nil
-	}
-	db.logNumber = 0
-}
-
-func (db *DB) writeLog(sync bool, b []byte) error {
-	err := db.log.Write(b)
-	if err == nil && sync {
-		return db.logFile.Sync()
-	}
-	return err
-}
-
-func (db *DB) writeBatch(sync bool, batch batch.Batch, reply chan error) {
-	switch {
-	case db.logErr != nil:
-		reply <- db.logErr
-		return
-	case db.manifestErr != nil:
-		reply <- db.manifestErr
-		return
-	case db.compactionErr != nil:
-		reply <- db.compactionErr
-		return
-	}
-	lastSequence := db.manifest.LastSequence()
-	batch.SetSequence(lastSequence + 1)
-	lastSequence = lastSequence.Next(uint64(batch.Count()))
-	err := db.writeLog(sync, batch.Bytes())
-	if err != nil {
-		reply <- err
-		// We don't known whether last batch was written successfully
-		// or not. We will try to switch to a new log file, and compact
-		// current memtable to Level-0. If this process success, the
-		// last batch is lost. It is ok, we never report a success to
-		// clients. But if server is shutdown in this process and the
-		// last batch was written to log, we should guarantee that
-		// entries in new log don't conflict with old log in sequence
-		// number.
-		//
-		// So an error write may indicate a successful write ?
-		db.manifest.SetLastSequence(lastSequence)
-		db.closeLog(err)
-		return
-	}
-	batch.Iterate(db.mem)
-	// Setting last sequence happens before sending reply, which happens
-	// before completion of receiving. Readers will observe the new last
-	// sequence eventually. So we don't do any sychronization here.
-	db.manifest.SetLastSequence(lastSequence)
-	reply <- err
-}
-
-func drainRequests(requestc chan batch.Request, err error) {
-	for req := range requestc {
-		req.Reply <- err
-	}
-}
-
-func (db *DB) mergeWrite() {
-	var group batch.Group
-	var requests chan batch.Request
-	requestc := db.requestc
-	defer db.bgGroup.Done()
-	for {
-		select {
-		case <-db.bgClosing:
-			group.Close(errors.ErrDBClosed)
-			close(db.requests)
-			go drainRequests(db.requestc, errors.ErrDBClosed)
-			return
-		case req := <-requestc:
-			group.Push(req)
-			if group.HasPending() {
-				requestc = nil
-			}
-			requests = db.requests
-		case requests <- group.Head:
-			group.Rewind()
-			if group.Empty() {
-				requests = nil
-			}
-			requestc = db.requestc
-		}
-	}
-}
-
-func (db *DB) throttleRequest() (chan batch.Request, <-chan time.Time) {
-	bufSize := db.options.WriteBufferSize
-	bufUsage := db.mem.ApproximateMemoryUsage()
-	level0NumFiles := len(db.manifest.Current().Levels[0])
-	if db.log == nil {
-		db.tryOpenNextLog()
-	}
-	switch {
-	case db.logErr != nil || db.compactionErr != nil || db.manifestErr != nil:
-		return db.requests, nil
-	case db.log == nil:
-		return nil, nil
-	case bufUsage <= bufSize:
-		return db.requests, nil
-	case level0NumFiles >= configs.L0StopWritesFiles:
-		return nil, nil
-	}
-	db.tryOpenNextLog()
-	switch {
-	case bufUsage >= bufSize+bufSize/4:
-		return nil, nil
-	case level0NumFiles >= configs.L0SlowdownFiles:
-		return nil, time.After(time.Millisecond)
-	}
-	return db.requests, nil
-}
-
-func (db *DB) serveRequest() {
-	db.bgGroup.Add(1)
-	go db.mergeWrite()
-	go db.serveCompaction(db.bgClosing)
-mainLoop:
-	for {
-		requests, slowdown := db.throttleRequest()
-		for {
-			select {
-			case <-db.closed:
-				return
-			case logFile := <-db.nextLogFile:
-				db.bgGroup.Done()
-				if logFile == nil {
-					break
-				}
-				db.openLog(logFile, db.nextLogNumber)
-				db.nextLogNumber = 0
-				continue mainLoop
-			case <-db.requestw:
-				continue mainLoop
-			case err := <-db.manifestErrChan:
-				db.manifestErr = err
-				continue mainLoop
-			case err := <-db.compactionErrChan:
-				db.compactionErr = err
-				continue mainLoop
-			case <-slowdown:
-				requests = db.requests
-				slowdown = nil
-			case req, ok := <-requests:
-				if !ok {
-					db.requests = nil
-					continue mainLoop
-				}
-				db.writeBatch(req.Sync, req.Batch, req.Reply)
-				continue mainLoop
-			}
-		}
-	}
 }
 
 func (db *DB) Put(key, value []byte, opts *options.WriteOptions) error {
@@ -651,6 +426,7 @@ func initDB(db *DB, name string, m *manifest.Manifest, locker io.Closer, opts *o
 	db.requests = make(chan batch.Request)
 	db.requestw = make(chan struct{}, 1)
 	db.nextLogFile = make(chan file.File, 1)
+	db.nextLogFileErr = make(chan error, 1)
 	db.manifestErrChan = make(chan error, 1)
 	db.compactionErrChan = make(chan error, 1)
 	db.memtableEdit = make(chan *manifest.Edit, 1)
@@ -682,7 +458,7 @@ func createDB(dbname string, locker io.Closer, opts *options.Options) (*DB, erro
 	}
 	initDB(db, dbname, manifest, locker, opts)
 	db.bgGroup.Add(1)
-	go db.serveRequest()
+	go db.serveWrite()
 	return db, nil
 }
 
@@ -719,6 +495,6 @@ func recoverDB(dbname string, locker io.Closer, opts *options.Options) (db *DB, 
 		return nil, err
 	}
 	db.bgGroup.Add(1)
-	go db.serveRequest()
+	go db.serveWrite()
 	return db, nil
 }

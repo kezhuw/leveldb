@@ -84,16 +84,16 @@ func (db *DB) startLevelCompactions(compactions []*manifest.Compaction) {
 	}
 }
 
-func (db *DB) serveCompaction(closing chan struct{}) {
-	db.bgGroup.Add(1)
+func (db *DB) serveCompaction(done chan struct{}) {
 	go db.serveVersionEdit(db.manifest.Current())
-	defer db.bgGroup.Done()
+	defer close(done)
 	defer close(db.compactionEdit)
 	var registry compaction.Registry
 	var ongoingObsoleteFiles chan struct{}
 	var pendingMemtable *memtable.MemTable
 	var compactionErr, manifestErr error
 	var pendingFiles [configs.NumberLevels - 1]manifest.FileList
+	closing := db.bgClosing
 	pendingObsoleteFiles := db.manifest.NextFileNumber()
 	registry.Recap(db.options.CompactionConcurrency)
 	for !(closing == nil && registry.Concurrency() == 0 && ongoingObsoleteFiles == nil && pendingObsoleteFiles == 0) {
@@ -157,7 +157,6 @@ func (db *DB) serveCompaction(closing chan struct{}) {
 }
 
 func (db *DB) serveVersionEdit(tip *manifest.Version) {
-	defer db.bgGroup.Done()
 	var lastErr error
 	for edit := range db.compactionEdit {
 		next, err := db.manifest.Log(tip, edit.edit)
