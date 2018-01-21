@@ -5,6 +5,7 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 
 	"github.com/kezhuw/leveldb/internal/compaction"
 	"github.com/kezhuw/leveldb/internal/configs"
@@ -46,7 +47,7 @@ type Manifest struct {
 }
 
 func (m *Manifest) Current() *Version {
-	return m.current
+	return (*Version)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&m.current))))
 }
 
 func (m *Manifest) LogFileNumber() uint64 {
@@ -159,15 +160,6 @@ func (m *Manifest) RetainCurrent() *Version {
 	return v
 }
 
-func (m *Manifest) installCurrent(v *Version) {
-	v.refs = 1
-	m.versionsMu.Lock()
-	m.versions[v] = struct{}{}
-	m.versionsMu.Unlock()
-	m.current, v = v, m.current
-	m.ReleaseVersion(v)
-}
-
 // Log writes edit to manifest file.
 func (m *Manifest) Log(tip *Version, edit *Edit) (*Version, error) {
 	if current := m.current; current.number > tip.number {
@@ -221,7 +213,7 @@ func (m *Manifest) Append(tip *Version) {
 	m.versions[tip] = struct{}{}
 	m.versionsMu.Unlock()
 	current := m.current
-	m.current, current = tip, m.current
+	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&m.current)), unsafe.Pointer(tip))
 	m.ReleaseVersion(current)
 }
 
