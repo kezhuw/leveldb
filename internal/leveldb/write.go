@@ -11,6 +11,7 @@ import (
 	"github.com/kezhuw/leveldb/internal/files"
 	"github.com/kezhuw/leveldb/internal/log"
 	"github.com/kezhuw/leveldb/internal/memtable"
+	"github.com/kezhuw/leveldb/internal/request"
 )
 
 var elapsedSlowDown = make(chan time.Time)
@@ -131,7 +132,7 @@ func (db *DB) wakeupWrite(level int) {
 	}
 }
 
-func (db *DB) slowdownLog(c <-chan time.Time) (chan batch.Request, <-chan time.Time) {
+func (db *DB) slowdownLog(c <-chan time.Time) (chan request.Request, <-chan time.Time) {
 	switch {
 	case c == nil:
 		return nil, time.After(time.Millisecond)
@@ -142,7 +143,7 @@ func (db *DB) slowdownLog(c <-chan time.Time) (chan batch.Request, <-chan time.T
 	}
 }
 
-func (db *DB) throttleLog(slowdown <-chan time.Time) (chan batch.Request, <-chan time.Time) {
+func (db *DB) throttleLog(slowdown <-chan time.Time) (chan request.Request, <-chan time.Time) {
 	level0NumFiles := len(db.manifest.Current().Levels[0])
 	switch {
 	case db.logErr != nil || db.compactionErr != nil || db.manifestErr != nil:
@@ -156,15 +157,15 @@ func (db *DB) throttleLog(slowdown <-chan time.Time) (chan batch.Request, <-chan
 	}
 }
 
-func drainRequests(requestc chan batch.Request, err error) {
+func drainRequests(requestc chan request.Request, err error) {
 	for req := range requestc {
 		req.Reply <- err
 	}
 }
 
 func (db *DB) serveMerge() {
-	var group batch.Group
-	var requests chan batch.Request
+	var group request.Group
+	var requests chan request.Request
 	requestc := db.requestc
 	for {
 		select {
@@ -175,11 +176,11 @@ func (db *DB) serveMerge() {
 			return
 		case req := <-requestc:
 			group.Push(req)
-			if group.HasPending() {
+			if group.Full() {
 				requestc = nil
 			}
 			requests = db.requests
-		case requests <- group.Head:
+		case requests <- group.Head():
 			group.Rewind()
 			if group.Empty() {
 				requests = nil
@@ -195,7 +196,7 @@ func (db *DB) serveWrite() {
 	go db.serveMerge()
 	go db.serveCompaction(compactionClosed)
 	var lastErr error
-	var requests chan batch.Request
+	var requests chan request.Request
 	var slowdown <-chan time.Time
 	for db.requests != nil || db.nextLogNumber != 0 || compactionClosed != nil {
 		requests, slowdown = db.throttleLog(slowdown)

@@ -21,13 +21,14 @@ import (
 	"github.com/kezhuw/leveldb/internal/manifest"
 	"github.com/kezhuw/leveldb/internal/memtable"
 	"github.com/kezhuw/leveldb/internal/options"
+	"github.com/kezhuw/leveldb/internal/request"
 )
 
 type DB struct {
 	name string
 
-	requestc chan batch.Request
-	requests chan batch.Request
+	requestc chan request.Request
+	requests chan request.Request
 	requestw chan struct{}
 
 	mu       sync.RWMutex
@@ -300,7 +301,7 @@ func (db *DB) Write(b batch.Batch, opts *options.WriteOptions) error {
 		return errors.ErrDBClosed
 	}
 	replyc := make(chan error, 1)
-	db.requestc <- batch.Request{Sync: opts.Sync, Batch: b, Reply: replyc}
+	db.requestc <- request.Request{Sync: opts.Sync, Batch: b, Reply: replyc}
 	return <-replyc
 }
 
@@ -422,8 +423,8 @@ func initDB(db *DB, name string, m *manifest.Manifest, locker io.Closer, opts *o
 	db.options = opts
 	db.closed = make(chan struct{})
 	db.bgClosing = make(chan struct{})
-	db.requestc = make(chan batch.Request, 1024)
-	db.requests = make(chan batch.Request)
+	db.requestc = make(chan request.Request, 1024)
+	db.requests = make(chan request.Request)
 	db.requestw = make(chan struct{}, 1)
 	db.nextLogFile = make(chan file.File, 1)
 	db.nextLogFileErr = make(chan error, 1)
