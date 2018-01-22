@@ -242,8 +242,8 @@ func (db *DB) recoverLogs(logs []uint64) error {
 
 func (db *DB) NewSnapshot() *Snapshot {
 	ss := &Snapshot{db: db, refs: 1}
-	ss.seq = db.manifest.LastSequence()
 	db.snapshotsMu.Lock()
+	ss.seq = db.manifest.LastSequence()
 	db.snapshots.PushBack(ss)
 	db.snapshotsMu.Unlock()
 	return ss
