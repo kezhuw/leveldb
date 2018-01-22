@@ -17,10 +17,11 @@ import (
 var elapsedSlowDown = make(chan time.Time)
 
 func (db *DB) tryOpenNextLog() {
-	if db.imm == nil && db.nextLogNumber == 0 {
-		db.nextLogNumber, _ = db.manifest.NewFileNumber()
-		go db.openNextLog()
+	if db.nextLogNumber != 0 || db.loadBundle().imm != nil {
+		return
 	}
+	db.nextLogNumber, _ = db.manifest.NewFileNumber()
+	go db.openNextLog()
 }
 
 func (db *DB) openNextLog() {
@@ -47,30 +48,14 @@ func (db *DB) openNextLog() {
 	}
 }
 
-func (db *DB) switchMemTable() {
-	// Write goroutine is the only writer to change db.mem, so there is
-	// no need to sync read of db.mem.
-	imm := db.mem
-	if imm.Empty() {
-		return
-	}
-	mem := memtable.New(db.options.Comparator)
-	db.mu.Lock()
-	db.imm = imm
-	db.mem = mem
-	db.mu.Unlock()
-	db.compactionMemtable <- imm
-}
-
-func (db *DB) openLog(f file.File, number uint64) {
-	db.log = log.NewWriter(f, 0)
+func (db *DB) openLog(f file.File, offset int64, number uint64) {
+	db.log = log.NewWriter(f, offset)
 	db.logErr = nil
 	if db.logFile != nil {
 		db.logFile.Close()
 	}
 	db.logFile = f
 	db.logNumber = number
-	db.switchMemTable()
 }
 
 func (db *DB) closeLog(err error) {
@@ -91,7 +76,7 @@ func (db *DB) writeLog(sync bool, b []byte) error {
 	return err
 }
 
-func (db *DB) writeBatch(sync bool, batch batch.Batch, reply chan error) error {
+func (db *DB) writeBatch(mem *memtable.MemTable, sync bool, batch batch.Batch, reply chan error) error {
 	switch {
 	case db.logErr != nil:
 		reply <- db.logErr
@@ -112,7 +97,6 @@ func (db *DB) writeBatch(sync bool, batch batch.Batch, reply chan error) error {
 		reply <- err
 		return err
 	}
-	mem := db.mem
 	batch.Iterate(mem)
 	// Setting last sequence happens before sending reply, which happens
 	// before completion of receiving. Readers will observe the new last
@@ -147,7 +131,7 @@ func (db *DB) slowdownLog(c <-chan time.Time) (chan request.Request, <-chan time
 }
 
 func (db *DB) throttleLog(slowdown <-chan time.Time) (chan request.Request, <-chan time.Time) {
-	level0NumFiles := len(db.manifest.Current().Levels[0])
+	level0NumFiles := len(db.manifest.Version().Levels[0])
 	switch {
 	case db.logErr != nil || db.compactionErr != nil || db.manifestErr != nil:
 		return db.requests, nil
@@ -201,6 +185,7 @@ func (db *DB) serveWrite() {
 	var lastErr error
 	var requests chan request.Request
 	var slowdown <-chan time.Time
+	mem := db.bundle.mem
 	for db.requests != nil || db.nextLogNumber != 0 || compactionClosed != nil {
 		requests, slowdown = db.throttleLog(slowdown)
 		select {
@@ -211,7 +196,8 @@ func (db *DB) serveWrite() {
 				db.nextLogNumber = 0
 				break
 			}
-			db.openLog(logFile, db.nextLogNumber)
+			db.openLog(logFile, 0, db.nextLogNumber)
+			mem = db.switchMemTable(mem)
 			db.nextLogNumber = 0
 			lastErr = nil
 		case lastErr = <-db.nextLogFileErr:
@@ -229,7 +215,7 @@ func (db *DB) serveWrite() {
 			case lastErr != nil:
 				req.Reply <- lastErr
 			default:
-				lastErr = db.writeBatch(req.Sync, req.Batch, req.Reply)
+				lastErr = db.writeBatch(mem, req.Sync, req.Batch, req.Reply)
 			}
 			slowdown = nil
 		}

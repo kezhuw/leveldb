@@ -33,10 +33,10 @@ func (p byTopScore) Swap(i, j int) {
 }
 
 type Version struct {
-	number  uint64
-	refs    int64
-	cache   *table.Cache
-	options *options.Options
+	number   uint64
+	cache    *table.Cache
+	options  *options.Options
+	manifest *Manifest
 
 	// Levels[0], sorted from newest to oldest;
 	// Levels[n], sorted from smallest to largest.
@@ -494,7 +494,7 @@ func (v *Version) snapshot(edit *Edit) {
 }
 
 func (v *Version) clone() *Version {
-	copy := &Version{number: v.number + 1, options: v.options, cache: v.cache}
+	copy := &Version{number: v.number + 1, options: v.options, cache: v.cache, manifest: v.manifest}
 	for level := 0; level < configs.NumberLevels; level++ {
 		copy.Levels[level] = v.Levels[level].Dup()
 	}
@@ -520,10 +520,27 @@ func (v *Version) apply(edit *Edit) error {
 	return v.SortFiles()
 }
 
-func (v *Version) addLiveTables(tables map[uint64]struct{}) {
+func (v *Version) refFiles(files map[uint64]int) {
 	for level := 0; level < configs.NumberLevels; level++ {
 		for _, f := range v.Levels[level] {
-			tables[f.Number] = struct{}{}
+			files[f.Number]++
 		}
 	}
+}
+
+func (v *Version) unrefFiles(files map[uint64]int) {
+	for level := 0; level < configs.NumberLevels; level++ {
+		for _, f := range v.Levels[level] {
+			refs := files[f.Number] - 1
+			if refs <= 0 {
+				delete(files, f.Number)
+				continue
+			}
+			files[f.Number] = refs
+		}
+	}
+}
+
+func (v *Version) finalize() {
+	v.manifest.unmountVersion(v)
 }

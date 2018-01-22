@@ -146,7 +146,6 @@ func (it *dbIterator) finalize() error {
 		return nil
 	}
 	it.status = iterator.Closed
-	it.db.manifest.ReleaseVersion(it.base)
 	it.db = nil
 	it.base = nil
 	it.iterator = nil

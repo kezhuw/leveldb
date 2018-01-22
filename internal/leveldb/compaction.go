@@ -77,18 +77,8 @@ func (db *DB) startLevelCompactions(compactions []*manifest.Compaction) {
 	}
 }
 
-func (db *DB) appendVersion(level int, version *manifest.Version) {
-	defer db.wakeupWrite(level)
-	db.mu.Lock()
-	defer db.mu.Unlock()
-	db.manifest.Append(version)
-	if level == -1 {
-		db.imm = nil
-	}
-}
-
 func (db *DB) serveCompaction(done chan struct{}) {
-	go db.serveVersionEdit(db.manifest.Current())
+	go db.serveVersionEdit(db.manifest.Version())
 	defer close(done)
 	defer close(db.compactionEdit)
 	var registry compaction.Registry
@@ -110,7 +100,7 @@ func (db *DB) serveCompaction(done chan struct{}) {
 			closing = nil
 		case edit := <-db.memtableEdit:
 			output := edit.AddedFiles[0].FileMeta
-			maxLevel := db.manifest.Current().PickLevelForMemTableOutput(output.Smallest, output.Largest)
+			maxLevel := db.manifest.Version().PickLevelForMemTableOutput(output.Smallest, output.Largest)
 			if maxLevel > 0 {
 				edit.AddedFiles[0].Level = registry.ExpandTo(-1, maxLevel)
 			}
@@ -123,7 +113,7 @@ func (db *DB) serveCompaction(done chan struct{}) {
 		case result := <-db.compactionResult:
 			switch {
 			case result.err == nil:
-				db.appendVersion(result.level, result.version)
+				db.switchVersion(result.level, result.version)
 				registry.Complete(result.level)
 				pendingObsoleteFiles = db.updateObsoleteTableNumber(pendingObsoleteFiles, registry.NextFileNumber(0))
 				pendingLevelCompaction = true

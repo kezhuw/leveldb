@@ -3,6 +3,7 @@ package manifest
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -24,6 +25,8 @@ type Manifest struct {
 	options     *options.Options
 	fs          file.FileSystem
 
+	version *Version
+
 	tableCache *table.Cache
 
 	lastSequence   keys.Sequence
@@ -39,15 +42,10 @@ type Manifest struct {
 	manifestFile       file.File
 	manifestNextNumber uint64
 
-	current    *Version
-	versions   map[*Version]struct{}
-	versionsMu sync.Mutex
+	liveFiles   map[uint64]int
+	liveFilesMu sync.Mutex
 
 	scratch []byte
-}
-
-func (m *Manifest) Current() *Version {
-	return (*Version)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&m.current))))
 }
 
 func (m *Manifest) LogFileNumber() uint64 {
@@ -89,16 +87,12 @@ func (m *Manifest) MarkFileNumberUsed(number uint64) {
 }
 
 func (m *Manifest) AddLiveFiles(files map[uint64]struct{}) map[uint64]struct{} {
-	m.AddLiveTables(files)
-	return files
-}
-
-func (m *Manifest) AddLiveTables(tables map[uint64]struct{}) {
-	m.versionsMu.Lock()
-	defer m.versionsMu.Unlock()
-	for v := range m.versions {
-		v.addLiveTables(tables)
+	m.liveFilesMu.Lock()
+	defer m.liveFilesMu.Unlock()
+	for f := range m.liveFiles {
+		files[f] = struct{}{}
 	}
+	return files
 }
 
 func (m *Manifest) resetCurrentManifest(snapshot *Edit) error {
@@ -144,25 +138,9 @@ func (m *Manifest) writeEdit(log *log.Writer, file file.File, edit *Edit) error 
 	return file.Sync()
 }
 
-func (m *Manifest) ReleaseVersion(v *Version) bool {
-	if atomic.AddInt64(&v.refs, -1) == 0 {
-		m.versionsMu.Lock()
-		delete(m.versions, v)
-		m.versionsMu.Unlock()
-		return true
-	}
-	return false
-}
-
-func (m *Manifest) RetainCurrent() *Version {
-	v := m.current
-	atomic.AddInt64(&v.refs, 1)
-	return v
-}
-
 // Log writes edit to manifest file.
 func (m *Manifest) Log(tip *Version, edit *Edit) (*Version, error) {
-	if current := m.current; current.number > tip.number {
+	if v := m.version; v.number > tip.number {
 		panic("current version number > tip version number")
 	}
 
@@ -207,18 +185,30 @@ func (m *Manifest) Log(tip *Version, edit *Edit) (*Version, error) {
 	return next, nil
 }
 
+func (m *Manifest) mountVersion(v *Version) {
+	m.liveFilesMu.Lock()
+	defer m.liveFilesMu.Unlock()
+	v.refFiles(m.liveFiles)
+	runtime.SetFinalizer(v, (*Version).finalize)
+}
+
+func (m *Manifest) unmountVersion(v *Version) {
+	m.liveFilesMu.Lock()
+	defer m.liveFilesMu.Unlock()
+	v.unrefFiles(m.liveFiles)
+}
+
+func (m *Manifest) Version() *Version {
+	return (*Version)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&m.version))))
+}
+
 func (m *Manifest) Append(tip *Version) {
-	tip.refs = 1
-	m.versionsMu.Lock()
-	m.versions[tip] = struct{}{}
-	m.versionsMu.Unlock()
-	current := m.current
-	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&m.current)), unsafe.Pointer(tip))
-	m.ReleaseVersion(current)
+	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&m.version)), unsafe.Pointer(tip))
+	m.mountVersion(tip)
 }
 
 func (m *Manifest) Apply(edit *Edit) error {
-	next, err := m.Log(m.current, edit)
+	next, err := m.Log(m.version, edit)
 	if err != nil {
 		return err
 	}
@@ -227,7 +217,7 @@ func (m *Manifest) Apply(edit *Edit) error {
 }
 
 func (m *Manifest) PickCompactions(registry *compaction.Registry, pendingFiles []FileList) []*Compaction {
-	return m.current.pickCompactions(registry, pendingFiles, m.NextFileNumber())
+	return m.version.pickCompactions(registry, pendingFiles, m.NextFileNumber())
 }
 
 func Create(dbname string, opts *options.Options) (manifest *Manifest, err error) {
@@ -280,9 +270,7 @@ func Create(dbname string, opts *options.Options) (manifest *Manifest, err error
 		return nil, err
 	}
 
-	cache := table.NewCache(dbname, opts)
-	current := &Version{refs: 1, options: opts, cache: cache}
-	return &Manifest{
+	manifest = &Manifest{
 		dbname:         dbname,
 		currentName:    currentName,
 		fs:             fs,
@@ -293,14 +281,16 @@ func Create(dbname string, opts *options.Options) (manifest *Manifest, err error
 		manifestLog:    manifestLog,
 		manifestFile:   manifestFile,
 		manifestNumber: manifestNumber,
-		current:        current,
-		versions:       map[*Version]struct{}{current: {}},
+		liveFiles:      make(map[uint64]int),
 		scratch:        record,
-		tableCache:     cache,
-	}, nil
+		tableCache:     table.NewCache(dbname, opts),
+	}
+	version := &Version{options: opts, cache: manifest.tableCache, manifest: manifest}
+	manifest.Append(version)
+	return manifest, nil
 }
 
-func Recover(dbname string, opts *options.Options) (manifest *Manifest, err error) {
+func Recover(dbname string, opts *options.Options) (*Manifest, error) {
 	fs := opts.FileSystem
 	currentName := files.CurrentFileName(dbname)
 	manifestName, err := files.GetCurrentManifest(fs, dbname, currentName)
@@ -323,16 +313,14 @@ func Recover(dbname string, opts *options.Options) (manifest *Manifest, err erro
 	builder.ManifestFile = manifestFile
 	builder.ManifestNumber = manifestNumber
 
-	current := &Version{refs: 1, options: opts}
-	offset, err := builder.Build(current)
+	version := &Version{options: opts}
+	offset, err := builder.Build(version)
 	if err != nil {
 		manifestFile.Close()
 		return nil, err
 	}
 
-	cache := table.NewCache(dbname, opts)
-	current.cache = cache
-	manifest = &Manifest{
+	manifest := &Manifest{
 		dbname:         dbname,
 		currentName:    currentName,
 		fs:             fs,
@@ -343,11 +331,13 @@ func Recover(dbname string, opts *options.Options) (manifest *Manifest, err erro
 		manifestLog:    log.NewWriter(manifestFile, offset),
 		manifestFile:   manifestFile,
 		manifestNumber: manifestNumber,
-		current:        current,
-		versions:       map[*Version]struct{}{current: {}},
+		liveFiles:      make(map[uint64]int),
 		scratch:        builder.Scratch,
-		tableCache:     cache,
+		tableCache:     table.NewCache(dbname, opts),
 	}
+	version.cache = manifest.tableCache
+	version.manifest = manifest
+	manifest.Append(version)
 	manifest.MarkFileNumberUsed(manifest.logFileNumber)
 
 	return manifest, nil

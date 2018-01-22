@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	"github.com/kezhuw/leveldb/internal/batch"
 	"github.com/kezhuw/leveldb/internal/compactor"
@@ -31,12 +32,11 @@ type DB struct {
 	requests chan request.Request
 	requestw chan struct{}
 
-	mu       sync.RWMutex
-	mem      *memtable.MemTable
-	imm      *memtable.MemTable
+	bundle *bundle
+
 	manifest *manifest.Manifest
 
-	closing bool
+	closing uintptr
 	closed  chan struct{}
 
 	bgClosing chan struct{}
@@ -192,10 +192,8 @@ func (db *DB) recoverLogs(logs []uint64) error {
 		if err != nil {
 			return err
 		}
-		db.mem = memtable.New(db.options.Comparator)
-		db.log = log.NewWriter(logFile, 0)
-		db.logFile = logFile
-		db.logNumber = logNumber
+		db.bundle.mem = memtable.New(db.options.Comparator)
+		db.openLog(logFile, 0, logNumber)
 		return nil
 	}
 	maxSequence := db.manifest.LastSequence()
@@ -235,10 +233,8 @@ func (db *DB) recoverLogs(logs []uint64) error {
 	if err != nil {
 		return err
 	}
-	db.mem = mem
-	db.log = log.NewWriter(logFile, offset)
-	db.logFile = logFile
-	db.logNumber = logNumber
+	db.bundle.mem = mem
+	db.openLog(logFile, offset, logNumber)
 	db.manifest.SetLastSequence(maxSequence)
 	db.manifest.MarkFileNumberUsed(logNumber)
 	return nil
@@ -246,13 +242,7 @@ func (db *DB) recoverLogs(logs []uint64) error {
 
 func (db *DB) NewSnapshot() *Snapshot {
 	ss := &Snapshot{db: db, refs: 1}
-	db.mu.RLock()
-	if db.closing {
-		db.mu.RUnlock()
-		return nil
-	}
 	ss.seq = db.manifest.LastSequence()
-	db.mu.RUnlock()
 	db.snapshotsMu.Lock()
 	db.snapshots.PushBack(ss)
 	db.snapshotsMu.Unlock()
@@ -287,21 +277,13 @@ func (db *DB) Delete(key []byte, opts *options.WriteOptions) error {
 }
 
 func (db *DB) Write(b batch.Batch, opts *options.WriteOptions) error {
-	if db.closing {
-		return errors.ErrDBClosed
-	}
 	replyc := make(chan error, 1)
 	db.requestc <- request.Request{Sync: opts.Sync, Batch: b, Reply: replyc}
 	return <-replyc
 }
 
 func (db *DB) Close() error {
-	db.mu.Lock()
-	closing := db.closing
-	db.closing = true
-	db.mu.Unlock()
-
-	if closing {
+	if !atomic.CompareAndSwapUintptr(&db.closing, 0, 1) {
 		<-db.closed
 		return nil
 	}
@@ -309,7 +291,7 @@ func (db *DB) Close() error {
 
 	close(db.bgClosing)
 	db.bgGroup.Wait()
-
+	db.storeBundle(nil)
 	if db.locker != nil {
 		db.locker.Close()
 		db.locker = nil
@@ -320,24 +302,16 @@ func (db *DB) Close() error {
 }
 
 func (db *DB) Get(key []byte, opts *options.ReadOptions) ([]byte, error) {
-	return db.get(key, keys.MaxSequence, opts)
+	return db.get(key, db.manifest.LastSequence(), opts)
 }
 
 func (db *DB) get(key []byte, seq keys.Sequence, opts *options.ReadOptions) ([]byte, error) {
-	db.mu.RLock()
-	if db.closing {
-		db.mu.RUnlock()
+	bundle := db.loadBundle()
+	if bundle == nil {
 		return nil, errors.ErrDBClosed
 	}
-	lastSequence := db.manifest.LastSequence()
-	ver := db.manifest.RetainCurrent()
-	memtables := [2]*memtable.MemTable{db.mem, db.imm}
-	db.mu.RUnlock()
-	defer db.manifest.ReleaseVersion(ver)
-	if seq == keys.MaxSequence {
-		seq = lastSequence
-	}
 	ikey := keys.NewInternalKey(key, seq, keys.Seek)
+	memtables := [2]*memtable.MemTable{bundle.mem, bundle.imm}
 	for _, mem := range memtables {
 		if mem == nil {
 			continue
@@ -347,7 +321,7 @@ func (db *DB) get(key []byte, seq keys.Sequence, opts *options.ReadOptions) ([]b
 			return value, err
 		}
 	}
-	value, seekThroughFile, err := ver.Get(ikey, opts)
+	value, seekThroughFile, err := bundle.version.Get(ikey, opts)
 	if seekThroughFile.FileMeta != nil {
 		db.tryCompactFile(seekThroughFile)
 	}
@@ -355,19 +329,19 @@ func (db *DB) get(key []byte, seq keys.Sequence, opts *options.ReadOptions) ([]b
 }
 
 func (db *DB) All(opts *options.ReadOptions) iterator.Iterator {
-	return db.between(nil, nil, keys.MaxSequence, opts)
+	return db.between(nil, nil, db.manifest.LastSequence(), opts)
 }
 
 func (db *DB) Find(start []byte, opts *options.ReadOptions) iterator.Iterator {
-	return db.between(start, nil, keys.MaxSequence, opts)
+	return db.between(start, nil, db.manifest.LastSequence(), opts)
 }
 
 func (db *DB) Range(start, limit []byte, opts *options.ReadOptions) iterator.Iterator {
-	return db.between(start, limit, keys.MaxSequence, opts)
+	return db.between(start, limit, db.manifest.LastSequence(), opts)
 }
 
 func (db *DB) Prefix(prefix []byte, opts *options.ReadOptions) iterator.Iterator {
-	return db.prefix(prefix, keys.MaxSequence, opts)
+	return db.prefix(prefix, db.manifest.LastSequence(), opts)
 }
 
 func (db *DB) prefix(prefix []byte, seq keys.Sequence, opts *options.ReadOptions) iterator.Iterator {
@@ -376,27 +350,18 @@ func (db *DB) prefix(prefix []byte, seq keys.Sequence, opts *options.ReadOptions
 }
 
 func (db *DB) between(start, limit []byte, seq keys.Sequence, opts *options.ReadOptions) iterator.Iterator {
-	db.mu.RLock()
-	if db.closing {
-		db.mu.RUnlock()
+	bundle := db.loadBundle()
+	if bundle == nil {
 		return iterator.Error(errors.ErrDBClosed)
 	}
-	lastSequence := db.manifest.LastSequence()
-	mem := db.mem
-	imm := db.imm
-	ver := db.manifest.RetainCurrent()
-	db.mu.RUnlock()
-	var iters []iterator.Iterator
-	iters = append(iters, mem.NewIterator())
-	if imm != nil {
-		iters = append(iters, imm.NewIterator())
+	iters := make([]iterator.Iterator, 1, 16)
+	iters[0] = bundle.mem.NewIterator()
+	if bundle.imm != nil {
+		iters = append(iters, bundle.imm.NewIterator())
 	}
-	iters = ver.AppendIterators(iters, opts)
+	iters = bundle.version.AppendIterators(iters, opts)
 	mergeIt := iterator.NewMergeIterator(db.options.Comparator, iters...)
-	if seq == keys.MaxSequence {
-		seq = lastSequence
-	}
-	dbIt := newDBIterator(db, ver, seq, mergeIt)
+	dbIt := newDBIterator(db, bundle.version, seq, mergeIt)
 	ucmp := db.options.Comparator.UserKeyComparator
 	return iterator.NewRangeIterator(start, limit, ucmp, dbIt)
 }
@@ -413,6 +378,7 @@ func initDB(db *DB, name string, m *manifest.Manifest, locker io.Closer, opts *o
 	db.options = opts
 	db.closed = make(chan struct{})
 	db.bgClosing = make(chan struct{})
+	db.bundle = &bundle{version: m.Version()}
 	db.requestc = make(chan request.Request, 1024)
 	db.requests = make(chan request.Request)
 	db.requestw = make(chan struct{}, 1)
@@ -441,13 +407,10 @@ func createDB(dbname string, locker io.Closer, opts *options.Options) (*DB, erro
 	if err != nil {
 		return nil, fmt.Errorf("leveldb: fail to create log file: %s", err)
 	}
-	db := &DB{
-		log:       log.NewWriter(logFile, 0),
-		mem:       memtable.New(opts.Comparator),
-		logFile:   logFile,
-		logNumber: logNumber,
-	}
+	db := &DB{}
 	initDB(db, dbname, manifest, locker, opts)
+	db.bundle.mem = memtable.New(opts.Comparator)
+	db.openLog(logFile, 0, logNumber)
 	db.bgGroup.Add(1)
 	go db.serveWrite()
 	return db, nil
