@@ -235,7 +235,7 @@ func (db *DB) recoverLogs(logs []uint64) error {
 	}
 	db.bundle.mem = mem
 	db.openLog(logFile, offset, logNumber)
-	db.manifest.SetLastSequence(maxSequence)
+	db.manifest.StoreLastSequence(maxSequence)
 	db.manifest.MarkFileNumberUsed(logNumber)
 	return nil
 }
@@ -243,7 +243,7 @@ func (db *DB) recoverLogs(logs []uint64) error {
 func (db *DB) NewSnapshot() *Snapshot {
 	ss := &Snapshot{db: db, refs: 1}
 	db.snapshotsMu.Lock()
-	ss.seq = db.manifest.LastSequence()
+	ss.seq = db.manifest.LoadLastSequence()
 	db.snapshots.PushBack(ss)
 	db.snapshotsMu.Unlock()
 	return ss
@@ -259,7 +259,7 @@ func (db *DB) getSmallestSnapshot() keys.Sequence {
 	db.snapshotsMu.Lock()
 	defer db.snapshotsMu.Unlock()
 	if db.snapshots.Empty() {
-		return db.manifest.LastSequence()
+		return db.manifest.LoadLastSequence()
 	}
 	return db.snapshots.Oldest()
 }
@@ -302,7 +302,7 @@ func (db *DB) Close() error {
 }
 
 func (db *DB) Get(key []byte, opts *options.ReadOptions) ([]byte, error) {
-	return db.get(key, db.manifest.LastSequence(), opts)
+	return db.get(key, db.manifest.LoadLastSequence(), opts)
 }
 
 func (db *DB) get(key []byte, seq keys.Sequence, opts *options.ReadOptions) ([]byte, error) {
@@ -329,19 +329,19 @@ func (db *DB) get(key []byte, seq keys.Sequence, opts *options.ReadOptions) ([]b
 }
 
 func (db *DB) All(opts *options.ReadOptions) iterator.Iterator {
-	return db.between(nil, nil, db.manifest.LastSequence(), opts)
+	return db.between(nil, nil, db.manifest.LoadLastSequence(), opts)
 }
 
 func (db *DB) Find(start []byte, opts *options.ReadOptions) iterator.Iterator {
-	return db.between(start, nil, db.manifest.LastSequence(), opts)
+	return db.between(start, nil, db.manifest.LoadLastSequence(), opts)
 }
 
 func (db *DB) Range(start, limit []byte, opts *options.ReadOptions) iterator.Iterator {
-	return db.between(start, limit, db.manifest.LastSequence(), opts)
+	return db.between(start, limit, db.manifest.LoadLastSequence(), opts)
 }
 
 func (db *DB) Prefix(prefix []byte, opts *options.ReadOptions) iterator.Iterator {
-	return db.prefix(prefix, db.manifest.LastSequence(), opts)
+	return db.prefix(prefix, db.manifest.LoadLastSequence(), opts)
 }
 
 func (db *DB) prefix(prefix []byte, seq keys.Sequence, opts *options.ReadOptions) iterator.Iterator {

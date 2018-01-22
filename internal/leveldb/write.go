@@ -101,7 +101,7 @@ func (db *DB) writeBatch(mem *memtable.MemTable, sync bool, batch batch.Batch, r
 	// Setting last sequence happens before sending reply, which happens
 	// before completion of receiving. Readers will observe the new last
 	// sequence eventually. So we don't do any sychronization here.
-	db.manifest.SetLastSequence(lastSequence)
+	db.manifest.StoreLastSequence(lastSequence)
 	reply <- nil
 	if mem.ApproximateMemoryUsage() >= db.options.WriteBufferSize {
 		db.tryOpenNextLog()

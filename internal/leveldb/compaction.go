@@ -49,12 +49,10 @@ func (db *DB) startMemTableCompaction(registry *compaction.Registry, mem *memtab
 	m := db.manifest
 	fileNumber, nextFileNumber := m.NewFileNumber()
 	fileName := files.TableFileName(db.name, fileNumber)
-	lastSequence := m.LastSequence()
 	compactor := compactor.NewMemTableCompactor(fileNumber, fileName, db.getSmallestSnapshot(), mem, db.options)
 	edit := &manifest.Edit{
 		LogNumber:      db.logNumber,
 		NextFileNumber: nextFileNumber,
-		LastSequence:   lastSequence,
 	}
 	registration.NextFileNumber = fileNumber
 	go db.compact(compactor, edit)
@@ -65,11 +63,9 @@ func (db *DB) startLevelCompactions(compactions []*manifest.Compaction) {
 	if len(compactions) == 0 {
 		return
 	}
-	lastSequence := db.manifest.LastSequence()
 	smallestSequence := db.getSmallestSnapshot()
 	for _, c := range compactions {
 		edit := &manifest.Edit{
-			LastSequence:   lastSequence,
 			NextFileNumber: c.Registration.NextFileNumber,
 		}
 		compactor := compactor.NewLevelCompactor(db.name, smallestSequence, c, db.manifest, db.options)

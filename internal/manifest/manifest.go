@@ -56,8 +56,12 @@ func (m *Manifest) LastSequence() keys.Sequence {
 	return m.lastSequence
 }
 
-func (m *Manifest) SetLastSequence(seq keys.Sequence) {
-	m.lastSequence = seq
+func (m *Manifest) LoadLastSequence() keys.Sequence {
+	return keys.Sequence(atomic.LoadUint64((*uint64)(&m.lastSequence)))
+}
+
+func (m *Manifest) StoreLastSequence(seq keys.Sequence) {
+	atomic.StoreUint64((*uint64)(&m.lastSequence), uint64(seq))
 }
 
 // ManifestFileNumber returns current manifest number, possibly expired
@@ -149,9 +153,7 @@ func (m *Manifest) Log(tip *Version, edit *Edit) (*Version, error) {
 		panic(fmt.Errorf("leveldb: fail to edit version:\nversion:\n%s\n\nedit:%s", tip, edit))
 	}
 
-	if lastSequence := m.LastSequence(); edit.LastSequence < lastSequence {
-		edit.LastSequence = lastSequence
-	}
+	edit.LastSequence = m.LoadLastSequence()
 	// logFileNumber will only be written here later, so there is no need
 	// to do atomic loading here.
 	if logNumber := m.logFileNumber; edit.LogNumber < logNumber {
