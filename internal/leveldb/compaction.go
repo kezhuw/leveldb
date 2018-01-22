@@ -28,13 +28,6 @@ func (db *DB) tryCompactFile(file manifest.LevelFileMeta) {
 	}
 }
 
-func (db *DB) tryMemoryCompaction() {
-	if db.imm == nil || db.closing {
-		return
-	}
-	db.compactionMemtable <- db.imm
-}
-
 func (db *DB) compact(c compactor.Compactor, edit *manifest.Edit) {
 	level, err := c.Level(), c.Compact(edit)
 	if err != nil {
@@ -81,6 +74,16 @@ func (db *DB) startLevelCompactions(compactions []*manifest.Compaction) {
 		}
 		compactor := compactor.NewLevelCompactor(db.name, smallestSequence, c, db.manifest, db.options)
 		go db.compact(compactor, edit)
+	}
+}
+
+func (db *DB) appendVersion(level int, version *manifest.Version) {
+	defer db.wakeupWrite(level)
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	db.manifest.Append(version)
+	if level == -1 {
+		db.imm = nil
 	}
 }
 

@@ -244,16 +244,6 @@ func (db *DB) recoverLogs(logs []uint64) error {
 	return nil
 }
 
-func (db *DB) appendVersion(level int, version *manifest.Version) {
-	defer db.wakeupWrite(level)
-	db.mu.Lock()
-	defer db.mu.Unlock()
-	db.manifest.Append(version)
-	if level == -1 {
-		db.imm = nil
-	}
-}
-
 func (db *DB) NewSnapshot() *Snapshot {
 	ss := &Snapshot{db: db, refs: 1}
 	db.mu.RLock()

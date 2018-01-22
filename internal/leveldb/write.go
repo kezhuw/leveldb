@@ -48,15 +48,18 @@ func (db *DB) openNextLog() {
 }
 
 func (db *DB) switchMemTable() {
-	if db.mem.Empty() {
+	// Write goroutine is the only writer to change db.mem, so there is
+	// no need to sync read of db.mem.
+	imm := db.mem
+	if imm.Empty() {
 		return
 	}
 	mem := memtable.New(db.options.Comparator)
 	db.mu.Lock()
-	db.imm = db.mem
+	db.imm = imm
 	db.mem = mem
 	db.mu.Unlock()
-	db.tryMemoryCompaction()
+	db.compactionMemtable <- imm
 }
 
 func (db *DB) openLog(f file.File, number uint64) {
