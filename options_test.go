@@ -149,6 +149,9 @@ type optionsTest struct {
 	compactionBytesPerSeek      int
 	minimalAllowedOverlapSeeks  int
 	iterationBytesPerSampleSeek int
+	level0CompactionFiles       int
+	level0SlowdownWriteFiles    int
+	level0StopWriteFiles        int
 	filterBuffer                *bytes.Buffer
 	loggerBuffer                *bytes.Buffer
 	fsBuffer                    *bytes.Buffer
@@ -167,9 +170,16 @@ var optionsTests = []optionsTest{
 		compactionBytesPerSeek:      options.DefaultCompactionBytesPerSeek,
 		minimalAllowedOverlapSeeks:  options.DefaultMinimalAllowedOverlapSeeks,
 		iterationBytesPerSampleSeek: options.DefaultIterationBytesPerSampleSeek,
+		level0CompactionFiles:       options.DefaultLevel0CompactionFiles,
+		level0SlowdownWriteFiles:    options.DefaultLevel0SlowdownWriteFiles,
+		level0StopWriteFiles:        options.DefaultLevel0StopWriteFiles,
 	},
 	{
-		options:                     &Options{Compression: SnappyCompression, CompactionConcurrency: MaxCompactionConcurrency},
+		options: &Options{
+			Compression:           SnappyCompression,
+			CompactionConcurrency: MaxCompactionConcurrency,
+			Level0CompactionFiles: 10,
+		},
 		comparator:                  keys.BytewiseComparator,
 		compression:                 compress.SnappyCompression,
 		blockSize:                   options.DefaultBlockSize,
@@ -181,6 +191,9 @@ var optionsTests = []optionsTest{
 		compactionBytesPerSeek:      options.DefaultCompactionBytesPerSeek,
 		minimalAllowedOverlapSeeks:  options.DefaultMinimalAllowedOverlapSeeks,
 		iterationBytesPerSampleSeek: options.DefaultIterationBytesPerSampleSeek,
+		level0CompactionFiles:       10,
+		level0SlowdownWriteFiles:    10 + options.DefaultLevel0ThrottleStepFiles,
+		level0StopWriteFiles:        10 + options.DefaultLevel0ThrottleStepFiles + options.DefaultLevel0ThrottleStepFiles,
 	},
 	{
 		options: &Options{
@@ -198,6 +211,9 @@ var optionsTests = []optionsTest{
 			CompactionBytesPerSeek:      32 * 1024,
 			MinimalAllowedOverlapSeeks:  50,
 			IterationBytesPerSampleSeek: 64 * 1024,
+			Level0CompactionFiles:       10,
+			Level0SlowdownWriteFiles:    12,
+			Level0StopWriteFiles:        14,
 		},
 		comparator:                  keys.BytewiseComparator,
 		compression:                 compress.NoCompression,
@@ -210,6 +226,9 @@ var optionsTests = []optionsTest{
 		compactionBytesPerSeek:      32 * 1024,
 		minimalAllowedOverlapSeeks:  50,
 		iterationBytesPerSampleSeek: 64 * 1024,
+		level0CompactionFiles:       10,
+		level0SlowdownWriteFiles:    12,
+		level0StopWriteFiles:        14,
 		filterBuffer:                filterBuffer,
 		loggerBuffer:                loggerBuffer,
 		fsBuffer:                    fsBuffer,
@@ -254,6 +273,15 @@ func TestOptions(t *testing.T) {
 		}
 		if iterationBytesPerSampleSeek := opts.getIterationBytesPerSampleSeek(); iterationBytesPerSampleSeek != test.iterationBytesPerSampleSeek {
 			t.Errorf("test=%d-IterationBytesPerSampleSeek got=%d want=%v", i, iterationBytesPerSampleSeek, test.iterationBytesPerSampleSeek)
+		}
+		if level0CompactionFiles := opts.getLevel0CompactionFiles(); level0CompactionFiles != test.level0CompactionFiles {
+			t.Errorf("test=%d-Level0CompactionFiles got=%d want=%d", i, level0CompactionFiles, test.level0CompactionFiles)
+		}
+		if level0SlowdownWriteFiles := opts.getLevel0SlowdownWriteFiles(); level0SlowdownWriteFiles != test.level0SlowdownWriteFiles {
+			t.Errorf("test=%d-Level0SlowdownWriteFiles got=%d want=%d", i, level0SlowdownWriteFiles, test.level0SlowdownWriteFiles)
+		}
+		if level0StopWriteFiles := opts.getLevel0StopWriteFiles(); level0StopWriteFiles != test.level0StopWriteFiles {
+			t.Errorf("test=%d-Level0StopWriteFiles got=%d want=%d", i, level0StopWriteFiles, test.level0StopWriteFiles)
 		}
 		if filter := opts.getFilter(); !matchFilter(filter, test.filterBuffer) {
 			t.Errorf("test=%d-Filter got=%v", i, filter)
@@ -302,6 +330,15 @@ func TestConvertOptions(t *testing.T) {
 		}
 		if iterationBytesPerSampleSeek := opts.IterationBytesPerSampleSeek; iterationBytesPerSampleSeek != test.iterationBytesPerSampleSeek {
 			t.Errorf("test=%d-IterationBytesPerSampleSeek got=%d want=%v", i, iterationBytesPerSampleSeek, test.iterationBytesPerSampleSeek)
+		}
+		if level0CompactionFiles := opts.Level0CompactionFiles; level0CompactionFiles != test.level0CompactionFiles {
+			t.Errorf("test=%d-Level0CompactionFiles got=%d want=%d", i, level0CompactionFiles, test.level0CompactionFiles)
+		}
+		if level0SlowdownWriteFiles := opts.Level0SlowdownWriteFiles; level0SlowdownWriteFiles != test.level0SlowdownWriteFiles {
+			t.Errorf("test=%d-Level0SlowdownWriteFiles got=%d want=%d", i, level0SlowdownWriteFiles, test.level0SlowdownWriteFiles)
+		}
+		if level0StopWriteFiles := opts.Level0StopWriteFiles; level0StopWriteFiles != test.level0StopWriteFiles {
+			t.Errorf("test=%d-Level0StopWriteFiles got=%d want=%d", i, level0StopWriteFiles, test.level0StopWriteFiles)
 		}
 		if filter := opts.Filter; !matchFilter(filter, test.filterBuffer) {
 			t.Errorf("test=%d-Filter got=%v", i, filter)

@@ -34,6 +34,11 @@ const (
 
 	DefaultMinimalAllowedOverlapSeeks  = 100
 	DefaultIterationBytesPerSampleSeek = 1024 * 1024
+
+	DefaultLevel0ThrottleStepFiles  = 4
+	DefaultLevel0CompactionFiles    = 4
+	DefaultLevel0SlowdownWriteFiles = DefaultLevel0CompactionFiles + DefaultLevel0ThrottleStepFiles
+	DefaultLevel0StopWriteFiles     = DefaultLevel0SlowdownWriteFiles + DefaultLevel0ThrottleStepFiles
 )
 
 var DefaultInternalComparator keys.InternalComparator = keys.InternalComparator{UserKeyComparator: keys.BytewiseComparator}
@@ -54,6 +59,9 @@ type Options struct {
 	CompactionBytesPerSeek      int
 	MinimalAllowedOverlapSeeks  int
 	IterationBytesPerSampleSeek int
+	Level0CompactionFiles       int
+	Level0SlowdownWriteFiles    int
+	Level0StopWriteFiles        int
 
 	CreateIfMissing bool
 	ErrorIfExists   bool
@@ -81,6 +89,9 @@ var DefaultOptions = Options{
 	CompactionBytesPerSeek:      DefaultCompactionBytesPerSeek,
 	MinimalAllowedOverlapSeeks:  DefaultMinimalAllowedOverlapSeeks,
 	IterationBytesPerSampleSeek: DefaultIterationBytesPerSampleSeek,
+	Level0CompactionFiles:       DefaultLevel0CompactionFiles,
+	Level0SlowdownWriteFiles:    DefaultLevel0SlowdownWriteFiles,
+	Level0StopWriteFiles:        DefaultLevel0StopWriteFiles,
 }
 var DefaultReadOptions = ReadOptions{}
 var DefaultWriteOptions = WriteOptions{}

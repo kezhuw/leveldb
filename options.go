@@ -107,6 +107,24 @@ type Options struct {
 	// The default value is 1MiB.
 	IterationBytesPerSampleSeek int
 
+	// Level0CompactionFiles specifies that a compaction for level-0 is triggered if
+	// there are more than this number of files in level-0.
+	//
+	// The default value is 4.
+	Level0CompactionFiles int
+
+	// Level0SlowdownWriteFiles specifies that writes will be slowdown if there are
+	// more than this number of files in level-0.
+	//
+	// The default value is Level0CompactionFiles + 4.
+	Level0SlowdownWriteFiles int
+
+	// Level0StopWriteFiles specifies that writes will be stopped if there are more
+	// than this number of files in level-0.
+	//
+	// The default value is Level0SlowdownWriteFiles + 4.
+	Level0StopWriteFiles int
+
 	// Filter specifys a Filter to filter out unnecessary disk reads when looking for
 	// a specific key. The filter is also used to generate filter data when building
 	// table files.
@@ -248,6 +266,27 @@ func (opts *Options) getIterationBytesPerSampleSeek() int {
 	return opts.IterationBytesPerSampleSeek
 }
 
+func (opts *Options) getLevel0CompactionFiles() int {
+	if opts.Level0CompactionFiles <= 0 {
+		return options.DefaultLevel0CompactionFiles
+	}
+	return opts.Level0CompactionFiles
+}
+
+func (opts *Options) getLevel0SlowdownWriteFiles() int {
+	if opts.Level0SlowdownWriteFiles <= opts.getLevel0CompactionFiles() {
+		return opts.getLevel0CompactionFiles() + options.DefaultLevel0ThrottleStepFiles
+	}
+	return opts.Level0SlowdownWriteFiles
+}
+
+func (opts *Options) getLevel0StopWriteFiles() int {
+	if opts.Level0StopWriteFiles <= opts.getLevel0SlowdownWriteFiles() {
+		return opts.getLevel0SlowdownWriteFiles() + options.DefaultLevel0ThrottleStepFiles
+	}
+	return opts.Level0StopWriteFiles
+}
+
 func convertOptions(opts *Options) *options.Options {
 	if opts == nil {
 		return &options.DefaultOptions
@@ -264,6 +303,9 @@ func convertOptions(opts *Options) *options.Options {
 	iopts.CompactionBytesPerSeek = opts.getCompactionBytesPerSeek()
 	iopts.MinimalAllowedOverlapSeeks = opts.getMinimalAllowedOverlapSeeks()
 	iopts.IterationBytesPerSampleSeek = opts.getIterationBytesPerSampleSeek()
+	iopts.Level0CompactionFiles = opts.getLevel0CompactionFiles()
+	iopts.Level0SlowdownWriteFiles = opts.getLevel0SlowdownWriteFiles()
+	iopts.Level0StopWriteFiles = opts.getLevel0StopWriteFiles()
 	iopts.Filter = opts.getFilter()
 	iopts.Logger = opts.getLogger()
 	iopts.FileSystem = opts.getFileSystem()

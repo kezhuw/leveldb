@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/kezhuw/leveldb/internal/batch"
-	"github.com/kezhuw/leveldb/internal/configs"
 	"github.com/kezhuw/leveldb/internal/errors"
 	"github.com/kezhuw/leveldb/internal/file"
 	"github.com/kezhuw/leveldb/internal/files"
@@ -139,9 +138,9 @@ func (db *DB) throttleLog(slowdown <-chan time.Time) (chan request.Request, <-ch
 	switch {
 	case db.logErr != nil || db.compactionErr != nil || db.manifestErr != nil:
 		return db.requests, nil
-	case level0NumFiles >= configs.L0SlowdownFiles:
+	case level0NumFiles >= db.options.Level0SlowdownWriteFiles:
 		return db.slowdownLog(slowdown)
-	case level0NumFiles >= configs.L0StopWritesFiles:
+	case level0NumFiles >= db.options.Level0StopWriteFiles:
 		return nil, nil
 	default:
 		return db.requests, nil

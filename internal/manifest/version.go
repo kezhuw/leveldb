@@ -157,7 +157,7 @@ func (v *Version) SeekOverlap(ikey keys.InternalKey, opts *options.ReadOptions) 
 }
 
 func (v *Version) computeCompactionScore() {
-	if score := float64(len(v.Levels[0])) / configs.L0CompactionFiles; score > 1.0 {
+	if score := float64(len(v.Levels[0])) / float64(v.options.Level0CompactionFiles); score > 1.0 {
 		v.scores = append(v.scores, compactionScore{level: 0, score: score})
 	}
 	maxBytes := 10 * 1024 * 1024
