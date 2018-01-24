@@ -138,9 +138,6 @@ func (db *DB) loadLog(mem *memtable.MemTable, logNumber uint64, flag int, maxSeq
 		return nil, 0, err
 	}
 	r := log.NewReader(logFile)
-	var ok bool
-	var seq keys.Sequence
-	var items []batch.Item
 	var batch batch.Batch
 	var record []byte
 	for {
@@ -159,13 +156,12 @@ func (db *DB) loadLog(mem *memtable.MemTable, logNumber uint64, flag int, maxSeq
 			return nil, 0, err
 		}
 		batch.Reset(record)
-		seq, items, ok = batch.Split(items)
-		if !ok || len(items) == 0 {
+		err = batch.Iterate(mem)
+		if err != nil {
 			logFile.Close()
-			return nil, 0, errors.ErrCorruptWriteBatch
+			return nil, 0, err
 		}
-		mem.Batch(seq, items)
-		if lastSequence := seq.Next(uint64(len(items) - 1)); lastSequence > *maxSequence {
+		if lastSequence := batch.Sequence().Next(uint64(batch.Count()) - 1); lastSequence > *maxSequence {
 			*maxSequence = lastSequence
 		}
 	}

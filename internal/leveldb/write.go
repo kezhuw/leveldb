@@ -97,7 +97,11 @@ func (db *DB) writeBatch(mem *memtable.MemTable, sync bool, batch batch.Batch, r
 		reply <- err
 		return err
 	}
-	batch.Iterate(mem)
+	if err = batch.Iterate(mem); err != nil {
+		db.logErr = err
+		reply <- err
+		return err
+	}
 	// Setting last sequence happens before sending reply, which happens
 	// before completion of receiving. Readers will observe the new last
 	// sequence eventually. So we don't do any sychronization here.

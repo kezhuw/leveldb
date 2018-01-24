@@ -13,11 +13,6 @@ const batchHeaderSize = 12
 
 var firstBatchHeaderBytes = [batchHeaderSize]byte{0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0}
 
-type Item struct {
-	Key   []byte
-	Value []byte
-}
-
 type Batch struct {
 	data []byte
 }
@@ -153,60 +148,32 @@ type Iterator interface {
 	Add(seq keys.Sequence, kind keys.Kind, key, value []byte)
 }
 
-func (b *Batch) Iterate(it Iterator) {
+func (b *Batch) Iterate(it Iterator) (err error) {
+	if b.Empty() {
+		return errors.ErrCorruptWriteBatch
+	}
 	seq := b.Sequence()
-	buf := b.Body()
-	for i, n := uint32(0), b.Count(); i < n; i++ {
+	found := uint32(0)
+	for buf := b.Body(); len(buf) != 0; seq, found = seq+1, found+1 {
 		var key, value []byte
 		kind := keys.Kind(buf[0])
-		key, buf = getLengthPrefixedBytesPanic(buf[1:])
+		key, buf = getLengthPrefixedBytes(buf[1:])
 		if kind == keys.Value {
-			value, buf = getLengthPrefixedBytesPanic(buf)
+			value, buf = getLengthPrefixedBytes(buf)
 		}
 		it.Add(seq, kind, key, value)
-		seq++
 	}
+	if found != b.Count() {
+		return errors.ErrCorruptWriteBatch
+	}
+	return
 }
 
-func (b *Batch) Split(dst []Item) (seq keys.Sequence, items []Item, ok bool) {
-	n := b.Count()
-	if n <= 0 {
-		return 0, dst[:0], true
-	}
-	switch {
-	case n > uint32(cap(dst)):
-		items = make([]Item, 0, n)
-	default:
-		items = dst[:0]
-	}
-	defer func() {
-		if recover() != nil {
-			ok = false
-		}
-	}()
-	seq = b.Sequence()
-	buf := b.Body()
-	for i := uint32(0); i < n; i++ {
-		var key, value []byte
-		typ := buf[0]
-		key, buf = getLengthPrefixedBytesPanic(buf[1:])
-		switch typ {
-		case byte(keys.Value):
-			value, buf = getLengthPrefixedBytesPanic(buf)
-		case byte(keys.Delete):
-		default:
-			return seq, items, false
-		}
-		items = append(items, Item{Key: key, Value: value})
-	}
-	return seq, items, len(buf) == 0
-}
-
-func getLengthPrefixedBytesPanic(buf []byte) (bytes, remains []byte) {
+func getLengthPrefixedBytes(buf []byte) (bytes, remains []byte) {
 	l, n := binary.Uvarint(buf)
 	if n <= 0 || n > binary.MaxVarintLen32 {
-		panic("invalid length prefixed bytes")
+		panic(errors.ErrCorruptWriteBatch)
 	}
 	buf = buf[n:]
-	return buf[:l], buf[l:]
+	return buf[:l:l], buf[l:]
 }

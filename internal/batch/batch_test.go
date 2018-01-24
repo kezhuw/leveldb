@@ -67,42 +67,6 @@ func buildBatch(t *testing.T, name string, seq keys.Sequence, cases []writeCase)
 	return b
 }
 
-func TestBatchSplit(t *testing.T) {
-	for name, cases := range bunchCases {
-		b := buildBatch(t, name, cases.Seq, cases.Writes)
-		seq, items, ok := b.Split(nil)
-		if !ok {
-			t.Errorf("%s: fail to split batch", name)
-		}
-		if seq != cases.Seq {
-			t.Errorf("%s: expect sequence: %d, got: %d", name, cases.Seq, seq)
-		}
-		if len(cases.Writes) != len(items) {
-			t.Errorf("%s: split %d cases to %d items", name, len(cases.Writes), len(items))
-			continue
-		}
-		for i, c := range cases.Writes {
-			if c.Key != string(items[i].Key) {
-				t.Errorf("%s(%d): expect key: %q, got: %q", name, i, c.Key, items[i].Key)
-			}
-			switch c.Kind {
-			case keys.Value:
-				if c.Value != string(items[i].Value) {
-					t.Errorf("%s(%d): key: %q, expect value: %q, got: %q", name, i, c.Key, c.Value, items[i].Value)
-				}
-			case keys.Delete:
-				if items[i].Value != nil {
-					t.Errorf("%s(%d): deleted key %q, got value: %q", name, i, c.Key, items[i].Value)
-				}
-			default:
-				t.Errorf("%s(%d): unknown keys.Kind: %s, key: %s.\n", name, i, c.Kind, c.Key)
-				continue
-			}
-		}
-
-	}
-}
-
 type batchApplier struct {
 	t         *testing.T
 	name      string

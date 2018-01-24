@@ -3,7 +3,6 @@ package memtable
 import (
 	"math/rand"
 
-	"github.com/kezhuw/leveldb/internal/batch"
 	"github.com/kezhuw/leveldb/internal/errors"
 	"github.com/kezhuw/leveldb/internal/iterator"
 	"github.com/kezhuw/leveldb/internal/keys"
@@ -154,18 +153,6 @@ func (m *MemTable) ApproximateMemoryUsage() int {
 
 func (m *MemTable) Empty() bool {
 	return m.head.Next(0) == nil
-}
-
-func (m *MemTable) Batch(seq keys.Sequence, items []batch.Item) {
-	for _, item := range items {
-		switch item.Value {
-		case nil:
-			m.Add(seq, keys.Delete, item.Key, nil)
-		default:
-			m.Add(seq, keys.Value, item.Key, item.Value)
-		}
-		seq++
-	}
 }
 
 func (m *MemTable) Add(seq keys.Sequence, kind keys.Kind, key, value []byte) {
