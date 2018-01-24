@@ -156,8 +156,23 @@ func (v *Version) SeekOverlap(ikey keys.InternalKey, opts *options.ReadOptions) 
 	return LevelFileMeta{}
 }
 
+func (v *Version) computeLevel0CompactionScore() float64 {
+	numFiles := len(v.Levels[0])
+	score := float64(numFiles) / float64(v.options.Level0CompactionFiles)
+	if score < 1.0 {
+		return score
+	}
+	switch {
+	case numFiles >= v.options.Level0StopWriteFiles && score < 3.0:
+		return 3.0
+	case numFiles >= v.options.Level0SlowdownWriteFiles && score < 2.0:
+		return 2.0
+	}
+	return score
+}
+
 func (v *Version) computeCompactionScore() {
-	if score := float64(len(v.Levels[0])) / float64(v.options.Level0CompactionFiles); score > 1.0 {
+	if score := v.computeLevel0CompactionScore(); score > 1.0 {
 		v.scores = append(v.scores, compactionScore{level: 0, score: score})
 	}
 	maxBytes := 10 * 1024 * 1024
