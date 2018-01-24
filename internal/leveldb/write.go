@@ -189,6 +189,9 @@ func (db *DB) serveWrite() {
 	var requests chan request.Request
 	var slowdown <-chan time.Time
 	mem := db.bundle.mem
+	// There may be too many files in level-0 to throttle writes, fire
+	// an level compaction to solve this.
+	db.tryLevelCompaction()
 	for db.requests != nil || db.nextLogNumber != 0 || compactionClosed != nil {
 		requests, slowdown = db.throttleLog(slowdown)
 		select {

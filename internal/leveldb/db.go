@@ -68,6 +68,7 @@ type DB struct {
 	snapshotsMu sync.Mutex
 
 	compactionFile     chan manifest.LevelFileMeta
+	compactionLevel    chan struct{}
 	compactionMemtable chan *memtable.MemTable
 
 	memtableEdit     chan *manifest.Edit
@@ -386,6 +387,7 @@ func initDB(db *DB, name string, m *manifest.Manifest, locker io.Closer, opts *o
 	db.compactionEdit = make(chan compactionEdit, configs.NumberLevels)
 	db.compactionResult = make(chan compactionResult, configs.NumberLevels)
 	db.compactionFile = make(chan manifest.LevelFileMeta, 128)
+	db.compactionLevel = make(chan struct{}, 1)
 	db.compactionMemtable = make(chan *memtable.MemTable, 1)
 	db.obsoleteFilesChan = make(chan uint64, configs.NumberLevels)
 	db.snapshots.Init()

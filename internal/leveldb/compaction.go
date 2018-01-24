@@ -28,6 +28,13 @@ func (db *DB) tryCompactFile(file manifest.LevelFileMeta) {
 	}
 }
 
+func (db *DB) tryLevelCompaction() {
+	select {
+	case db.compactionLevel <- struct{}{}:
+	default:
+	}
+}
+
 func (db *DB) compact(c compactor.Compactor, edit *manifest.Edit) {
 	level, err := c.Level(), c.Compact(edit)
 	if err != nil {
@@ -101,6 +108,8 @@ func (db *DB) serveCompaction(done chan struct{}) {
 				edit.AddedFiles[0].Level = registry.ExpandTo(-1, maxLevel)
 			}
 			db.compactionEdit <- compactionEdit{level: -1, edit: edit}
+		case <-db.compactionLevel:
+			pendingLevelCompaction = true
 		case mem := <-db.compactionMemtable:
 			pendingMemtable = mem
 		case file := <-db.compactionFile:
