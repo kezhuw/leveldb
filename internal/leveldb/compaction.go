@@ -89,9 +89,10 @@ func (db *DB) serveCompaction(done chan struct{}) {
 	var pendingMemtable *memtable.MemTable
 	var compactionErr, manifestErr error
 	var pendingFiles [configs.NumberLevels - 1]manifest.FileList
+	var pendingObsoleteFiles uint64
 	closing := db.bgClosing
-	pendingObsoleteFiles := db.manifest.NextFileNumber()
 	registry.Recap(db.options.CompactionConcurrency)
+	db.removeObsoleteFilesAsync(0)
 	for !(closing == nil && registry.Concurrency() == 0 && ongoingObsoleteFiles == nil && pendingObsoleteFiles == 0) {
 		var pendingLevelCompaction bool
 		select {
