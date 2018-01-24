@@ -45,8 +45,8 @@ func (db *DB) switchMemTable(mem *memtable.MemTable) *memtable.MemTable {
 }
 
 func (db *DB) switchVersion(level int, version *manifest.Version) {
+	defer db.wakeupWrite(level)
 	db.manifest.Append(version)
-	db.wakeupWrite(level)
 	old := db.loadBundle()
 	new := &bundle{
 		mem:     old.mem,
