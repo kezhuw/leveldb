@@ -11,7 +11,9 @@ import (
 )
 
 type dbIterator struct {
-	db       *DB
+	db *DB
+	// Keep it away from GC, this way level files iterator seeks in
+	// wouldn't got deleted due to umount from manifest.
 	base     *manifest.Version
 	ucmp     keys.Comparator
 	sequence keys.Sequence
@@ -204,7 +206,7 @@ func (it *dbIterator) parseKey(ikey *keys.ParsedInternalKey) bool {
 	it.sampleBytes -= len(key) + len(it.iterator.Value())
 	for it.sampleBytes < 0 {
 		it.sampleBytes += it.randomSampleBytes()
-		seekOverlapFile := it.base.SeekOverlap(key, nil)
+		seekOverlapFile := it.db.manifest.Version().SeekOverlap(key, nil)
 		if seekOverlapFile.FileMeta != nil {
 			it.db.tryCompactFile(seekOverlapFile)
 		}
