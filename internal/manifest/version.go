@@ -159,14 +159,12 @@ func (v *Version) SeekOverlap(ikey keys.InternalKey, opts *options.ReadOptions) 
 func (v *Version) computeLevel0CompactionScore() float64 {
 	numFiles := len(v.Levels[0])
 	score := float64(numFiles) / float64(v.options.Level0CompactionFiles)
-	if score < 1.0 {
-		return score
-	}
 	switch {
+	case score < 1.0:
 	case numFiles >= v.options.Level0StopWriteFiles && score < 3.0:
-		return 3.0
+		score = 3.0
 	case numFiles >= v.options.Level0SlowdownWriteFiles && score < 2.0:
-		return 2.0
+		score = 2.0
 	}
 	return score
 }
