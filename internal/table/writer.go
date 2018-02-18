@@ -159,7 +159,7 @@ func (w *Writer) writeBlock(block *block.Writer) (block.Handle, error) {
 		compressed, err := compress.Encode(compression, w.compressedBuf, data)
 		switch err {
 		case nil:
-			w.compressedBuf = compressed
+			w.compressedBuf = compressed[:cap(compressed)]
 			data = compressed
 		default:
 			// TODO logging compression failure
