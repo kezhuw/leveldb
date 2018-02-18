@@ -142,6 +142,7 @@ type optionsTest struct {
 	compression                 compress.Type
 	blockSize                   int
 	blockRestartInterval        int
+	blockCompressionRatio       float64
 	writeBufferSize             int
 	maxOpenFiles                int
 	blockCacheCapacity          int
@@ -163,6 +164,7 @@ var optionsTests = []optionsTest{
 		compression:                 compress.SnappyCompression,
 		blockSize:                   options.DefaultBlockSize,
 		blockRestartInterval:        options.DefaultBlockRestartInterval,
+		blockCompressionRatio:       options.DefaultBlockCompressionRatio,
 		writeBufferSize:             options.DefaultWriteBufferSize,
 		maxOpenFiles:                options.DefaultMaxOpenFiles,
 		blockCacheCapacity:          options.DefaultBlockCacheCapacity,
@@ -177,6 +179,7 @@ var optionsTests = []optionsTest{
 	{
 		options: &Options{
 			Compression:           SnappyCompression,
+			BlockCompressionRatio: 7.0 / 10.0,
 			CompactionConcurrency: MaxCompactionConcurrency,
 			Level0CompactionFiles: 10,
 		},
@@ -184,6 +187,7 @@ var optionsTests = []optionsTest{
 		compression:                 compress.SnappyCompression,
 		blockSize:                   options.DefaultBlockSize,
 		blockRestartInterval:        options.DefaultBlockRestartInterval,
+		blockCompressionRatio:       options.DefaultBlockCompressionRatio,
 		writeBufferSize:             options.DefaultWriteBufferSize,
 		maxOpenFiles:                options.DefaultMaxOpenFiles,
 		blockCacheCapacity:          options.DefaultBlockCacheCapacity,
@@ -201,6 +205,7 @@ var optionsTests = []optionsTest{
 			Compression:                 NoCompression,
 			BlockSize:                   options.DefaultBlockSize * 4,
 			BlockRestartInterval:        options.DefaultBlockRestartInterval + 2,
+			BlockCompressionRatio:       10.0 / 7.0,
 			WriteBufferSize:             options.DefaultWriteBufferSize + 4096,
 			MaxOpenFiles:                options.DefaultMaxOpenFiles + 512,
 			BlockCacheCapacity:          options.DefaultBlockCacheCapacity + 4096,
@@ -219,6 +224,7 @@ var optionsTests = []optionsTest{
 		compression:                 compress.NoCompression,
 		blockSize:                   options.DefaultBlockSize * 4,
 		blockRestartInterval:        options.DefaultBlockRestartInterval + 2,
+		blockCompressionRatio:       10.0 / 7.0,
 		writeBufferSize:             options.DefaultWriteBufferSize + 4096,
 		maxOpenFiles:                options.DefaultMaxOpenFiles + 512,
 		blockCacheCapacity:          options.DefaultBlockCacheCapacity + 4096,
@@ -252,6 +258,9 @@ func TestOptions(t *testing.T) {
 		}
 		if blockRestartInterval := opts.getBlockRestartInterval(); blockRestartInterval != test.blockRestartInterval {
 			t.Errorf("test=%d-BlockRestartInterval got=%d want=%v", i, blockRestartInterval, test.blockRestartInterval)
+		}
+		if blockCompressionRatio := opts.getBlockCompressionRatio(); blockCompressionRatio != test.blockCompressionRatio {
+			t.Errorf("test=%d-BlockCompressionRatio got=%v want=%v", i, blockCompressionRatio, test.blockCompressionRatio)
 		}
 		if writeBufferSize := opts.getWriteBufferSize(); writeBufferSize != test.writeBufferSize {
 			t.Errorf("test=%d-WriteBufferSize got=%d want=%v", i, writeBufferSize, test.writeBufferSize)
@@ -309,6 +318,9 @@ func TestConvertOptions(t *testing.T) {
 		}
 		if blockRestartInterval := opts.BlockRestartInterval; blockRestartInterval != test.blockRestartInterval {
 			t.Errorf("test=%d-BlockRestartInterval got=%d want=%v", i, blockRestartInterval, test.blockRestartInterval)
+		}
+		if blockCompressionRatio := opts.BlockCompressionRatio; blockCompressionRatio != test.blockCompressionRatio {
+			t.Errorf("test=%d-BlockCompressionRatio got=%v want=%v", i, blockCompressionRatio, test.blockCompressionRatio)
 		}
 		if writeBufferSize := opts.WriteBufferSize; writeBufferSize != test.writeBufferSize {
 			t.Errorf("test=%d-WriteBufferSize got=%d want=%v", i, writeBufferSize, test.writeBufferSize)

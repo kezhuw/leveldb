@@ -11,6 +11,7 @@ import (
 const (
 	DefaultBlockSize             = 4096
 	DefaultBlockRestartInterval  = 16
+	DefaultBlockCompressionRatio = 8.0 / 7.0
 	DefaultWriteBufferSize       = 4 * 1024 * 1024
 	DefaultCompression           = compress.SnappyCompression
 	DefaultMaxOpenFiles          = 1000
@@ -52,6 +53,7 @@ type Options struct {
 
 	BlockSize                   int
 	BlockRestartInterval        int
+	BlockCompressionRatio       float64
 	WriteBufferSize             int
 	MaxOpenFiles                int
 	BlockCacheCapacity          int
@@ -82,6 +84,7 @@ var DefaultOptions = Options{
 	FileSystem:                  file.DefaultFileSystem,
 	BlockSize:                   DefaultBlockSize,
 	BlockRestartInterval:        DefaultBlockRestartInterval,
+	BlockCompressionRatio:       DefaultBlockCompressionRatio,
 	WriteBufferSize:             DefaultWriteBufferSize,
 	MaxOpenFiles:                DefaultMaxOpenFiles,
 	BlockCacheCapacity:          DefaultBlockCacheCapacity,

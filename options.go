@@ -56,6 +56,14 @@ type Options struct {
 	// The default value is 16.
 	BlockRestartInterval int
 
+	// BlockCompressionRatio specifies a minimal compression ratio for table blocks.
+	// Uncompressed block will be written to table file if its compression ratio is
+	// this value.
+	//
+	// The default value is 8.0/7.0, which means that uncompressed block will be written
+	// to table file unless at least 1/8 of raw data were compressed out.
+	BlockCompressionRatio float64
+
 	// WriteBufferSize is the amount of data to build up in memory (backed by
 	// an unsorted log on disk) before converting to a sorted on-disk file.
 	//
@@ -213,6 +221,13 @@ func (opts *Options) getBlockRestartInterval() int {
 	return opts.BlockRestartInterval
 }
 
+func (opts *Options) getBlockCompressionRatio() float64 {
+	if opts.BlockCompressionRatio <= 1 {
+		return options.DefaultBlockCompressionRatio
+	}
+	return opts.BlockCompressionRatio
+}
+
 func (opts *Options) getWriteBufferSize() int {
 	if opts.WriteBufferSize <= 0 {
 		return options.DefaultWriteBufferSize
@@ -296,6 +311,7 @@ func convertOptions(opts *Options) *options.Options {
 	iopts.Compression = opts.getCompression()
 	iopts.BlockSize = opts.getBlockSize()
 	iopts.BlockRestartInterval = opts.getBlockRestartInterval()
+	iopts.BlockCompressionRatio = opts.getBlockCompressionRatio()
 	iopts.WriteBufferSize = opts.getWriteBufferSize()
 	iopts.MaxOpenFiles = opts.getMaxOpenFiles()
 	iopts.BlockCacheCapacity = opts.getBlockCacheCapacity()

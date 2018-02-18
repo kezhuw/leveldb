@@ -152,6 +152,10 @@ func (w *Writer) FileSize() int64 {
 	return w.offset
 }
 
+func (w *Writer) acceptCompression(rawSize, compressedSize int) bool {
+	return float64(rawSize)/float64(compressedSize) > w.options.BlockCompressionRatio
+}
+
 func (w *Writer) saveCompressedBuffer(buf *bytes.Buffer) {
 	b := buf.Bytes()
 	w.compressedBuf = b[:cap(b)]
@@ -162,12 +166,14 @@ func (w *Writer) writeBlock(block *block.Writer) (block.Handle, error) {
 	compression := w.options.Compression
 	if compression != compress.NoCompression {
 		compressed, err := compress.Encode(compression, w.compressedBuf, buf.Bytes())
-		switch err {
-		case nil:
+		switch {
+		case err == nil && w.acceptCompression(buf.Len(), len(compressed)):
 			buf = bytes.NewBuffer(compressed)
 			defer w.saveCompressedBuffer(buf)
-		default:
+		case err != nil:
 			// TODO logging compression failure
+			fallthrough
+		default:
 			// Fallback to NoCompression
 			compression = compress.NoCompression
 		}
