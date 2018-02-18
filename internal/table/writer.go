@@ -1,20 +1,20 @@
 package table
 
 import (
+	"bytes"
 	"io"
 
 	"github.com/kezhuw/leveldb/internal/compress"
 	"github.com/kezhuw/leveldb/internal/crc"
 	"github.com/kezhuw/leveldb/internal/endian"
 	filterp "github.com/kezhuw/leveldb/internal/filter"
-	"github.com/kezhuw/leveldb/internal/iovecs"
 	"github.com/kezhuw/leveldb/internal/options"
 	"github.com/kezhuw/leveldb/internal/table/block"
 	"github.com/kezhuw/leveldb/internal/table/filter"
 )
 
 type Writer struct {
-	w       iovecs.Writer
+	w       io.Writer
 	options *options.Options
 
 	err        error
@@ -35,7 +35,7 @@ type Writer struct {
 }
 
 func (w *Writer) Reset(f io.Writer, opts *options.Options) {
-	w.w = iovecs.NewWriter(f)
+	w.w = f
 	w.err = nil
 	w.offset = 0
 	w.numEntries = 0
@@ -128,8 +128,8 @@ func (w *Writer) Finish() (err error) {
 }
 
 func (w *Writer) writeMetaIndexBlock(metaIndex *block.Writer) (block.Handle, error) {
-	if data := w.filterBlock.Finish(); data != nil {
-		handle, err := w.writeRawBlock(data, compress.NoCompression)
+	if buf := w.filterBlock.Finish(); buf != nil {
+		handle, err := w.writeRawBlock(buf, compress.NoCompression)
 		if err != nil {
 			return handle, err
 		}
@@ -152,15 +152,20 @@ func (w *Writer) FileSize() int64 {
 	return w.offset
 }
 
+func (w *Writer) saveCompressedBuffer(buf *bytes.Buffer) {
+	b := buf.Bytes()
+	w.compressedBuf = b[:cap(b)]
+}
+
 func (w *Writer) writeBlock(block *block.Writer) (block.Handle, error) {
-	data := block.Finish()
+	buf := block.Finish()
 	compression := w.options.Compression
 	if compression != compress.NoCompression {
-		compressed, err := compress.Encode(compression, w.compressedBuf, data)
+		compressed, err := compress.Encode(compression, w.compressedBuf, buf.Bytes())
 		switch err {
 		case nil:
-			w.compressedBuf = compressed[:cap(compressed)]
-			data = compressed
+			buf = bytes.NewBuffer(compressed)
+			defer w.saveCompressedBuffer(buf)
 		default:
 			// TODO logging compression failure
 			// Fallback to NoCompression
@@ -168,19 +173,22 @@ func (w *Writer) writeBlock(block *block.Writer) (block.Handle, error) {
 		}
 	}
 	defer block.Reset()
-	return w.writeRawBlock(data, compression)
+	return w.writeRawBlock(buf, compression)
 }
 
-func (w *Writer) writeRawBlock(contents []byte, compression compress.Type) (block.Handle, error) {
+func (w *Writer) writeRawBlock(buf *bytes.Buffer, compression compress.Type) (block.Handle, error) {
+	length := buf.Len()
+	defer buf.Truncate(length)
 	trailer := w.scratch[:blockTrailerSize]
 	trailer[0] = byte(compression)
-	checksum := crc.Update(crc.New(contents), trailer[:1])
+	checksum := crc.Update(crc.New(buf.Bytes()), trailer[:1])
 	endian.PutUint32(trailer[1:], checksum.Value())
-	n, err := w.w.Writev(contents, trailer)
+	buf.Write(trailer)
+	n, err := w.w.Write(buf.Bytes())
 	if err != nil {
 		return block.Handle{}, err
 	}
-	handle := block.Handle{Offset: uint64(w.offset), Length: uint64(len(contents))}
-	w.offset += n
+	handle := block.Handle{Offset: uint64(w.offset), Length: uint64(length)}
+	w.offset += int64(n)
 	return handle, nil
 }

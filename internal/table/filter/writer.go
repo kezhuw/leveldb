@@ -45,7 +45,7 @@ func (w *Writer) generate() {
 	w.Generator.Append(&w.buf)
 }
 
-func (w *Writer) Finish() []byte {
+func (w *Writer) Finish() *bytes.Buffer {
 	if w.Generator == nil || (w.Generator.Empty() && w.buf.Len() == 0) {
 		return nil
 	}
@@ -60,5 +60,5 @@ func (w *Writer) Finish() []byte {
 		w.buf.Write(tmp4)
 	}
 	w.buf.WriteByte(byte(baseLg))
-	return w.buf.Bytes()
+	return &w.buf
 }

@@ -60,7 +60,7 @@ func (w *Writer) Add(key, value []byte) {
 	w.counter++
 }
 
-func (w *Writer) Finish() []byte {
+func (w *Writer) Finish() *bytes.Buffer {
 	w.buf.Grow(4*len(w.restarts) + 4)
 	tmp4 := w.scratch[:4]
 	for _, x := range w.restarts {
@@ -69,5 +69,5 @@ func (w *Writer) Finish() []byte {
 	}
 	endian.PutUint32(tmp4, uint32(len(w.restarts)))
 	w.buf.Write(tmp4)
-	return w.buf.Bytes()
+	return &w.buf
 }
