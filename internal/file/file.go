@@ -66,8 +66,6 @@ type FileSystem interface {
 
 type osFileSystem struct{}
 
-var DefaultFileSystem = osFileSystem{}
-
 func (osFileSystem) Open(name string, flag int) (File, error) {
 	return os.OpenFile(name, flag, 0666)
 }
@@ -96,3 +94,5 @@ func (osFileSystem) Remove(name string) error {
 func (osFileSystem) Rename(oldpath, newpath string) error {
 	return os.Rename(oldpath, newpath)
 }
+
+var DefaultFileSystem FileSystem = osFileSystem{}
