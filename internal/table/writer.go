@@ -106,13 +106,13 @@ func (w *Writer) Finish() (err error) {
 	}
 
 	// We use dataBlock here, since it is empty and no longer used.
-	w.footer.MetaIndexHandle, err = w.writeMetaIndexBlock(&w.dataBlock)
+	w.footer.MetaIndexHandle, err = w.finishMetaBlocks(&w.dataBlock)
 	if err != nil {
 		return err
 	}
 
 	w.flushPendingDataIndex(nil)
-	w.footer.DataIndexHandle, err = w.writeBlock(&w.dataIndexBlock)
+	w.footer.DataIndexHandle, err = w.finishBlock(&w.dataIndexBlock)
 	if err != nil {
 		return err
 	}
@@ -127,7 +127,7 @@ func (w *Writer) Finish() (err error) {
 	return w.err
 }
 
-func (w *Writer) writeMetaIndexBlock(metaIndex *block.Writer) (block.Handle, error) {
+func (w *Writer) finishMetaBlocks(metaIndex *block.Writer) (block.Handle, error) {
 	if buf := w.filterBlock.Finish(); buf != nil {
 		handle, err := w.writeRawBlock(buf, compress.NoCompression)
 		if err != nil {
@@ -137,14 +137,14 @@ func (w *Writer) writeMetaIndexBlock(metaIndex *block.Writer) (block.Handle, err
 		n := block.EncodeHandle(w.scratch[:], handle)
 		metaIndex.Add(name, w.scratch[:n])
 	}
-	return w.writeBlock(metaIndex)
+	return w.finishBlock(metaIndex)
 }
 
 func (w *Writer) flushDataBlock() error {
 	if w.dataBlock.Empty() {
 		return w.err
 	}
-	w.pendingDataIndex, w.err = w.writeBlock(&w.dataBlock)
+	w.pendingDataIndex, w.err = w.finishBlock(&w.dataBlock)
 	return w.err
 }
 
@@ -161,7 +161,7 @@ func (w *Writer) saveCompressedBuffer(buf *bytes.Buffer) {
 	w.compressedBuf = b[:cap(b)]
 }
 
-func (w *Writer) writeBlock(block *block.Writer) (block.Handle, error) {
+func (w *Writer) finishBlock(block *block.Writer) (block.Handle, error) {
 	buf := block.Finish()
 	compression := w.options.Compression
 	if compression != compress.NoCompression {
