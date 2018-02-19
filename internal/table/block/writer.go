@@ -61,9 +61,6 @@ func (w *Writer) Add(key, value []byte) {
 }
 
 func (w *Writer) Finish() []byte {
-	if w.Empty() {
-		return nil
-	}
 	w.buf.Grow(4*len(w.restarts) + 4)
 	tmp4 := w.scratch[:4]
 	for _, x := range w.restarts {
