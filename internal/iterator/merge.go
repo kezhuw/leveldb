@@ -1,6 +1,9 @@
 package iterator
 
-import "github.com/kezhuw/leveldb/internal/keys"
+import (
+	"github.com/kezhuw/leveldb/internal/keys"
+	"github.com/kezhuw/leveldb/internal/util"
+)
 
 type mergeIterator struct {
 	cmp       keys.Comparer
@@ -169,9 +172,7 @@ func (m *mergeIterator) Release() error {
 	err := m.err
 	m.iterators = m.iterators[:cap(m.iterators)]
 	for _, it := range m.iterators {
-		if err1 := it.Release(); err1 != nil && err == nil {
-			err = err1
-		}
+		err = util.FirstError(err, it.Release())
 	}
 	m.err = err
 	m.current = nil
