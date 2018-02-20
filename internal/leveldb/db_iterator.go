@@ -8,6 +8,7 @@ import (
 	"github.com/kezhuw/leveldb/internal/iterator"
 	"github.com/kezhuw/leveldb/internal/keys"
 	"github.com/kezhuw/leveldb/internal/manifest"
+	"github.com/kezhuw/leveldb/internal/util"
 )
 
 type dbIterator struct {
@@ -149,6 +150,7 @@ func (it *dbIterator) finalize() error {
 	}
 	it.status = iterator.Closed
 	it.db = nil
+	it.err = util.FirstError(it.err, it.iterator.Release())
 	it.base = nil
 	it.iterator = nil
 	return it.Err()
