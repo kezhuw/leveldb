@@ -14,8 +14,8 @@ import (
 	"github.com/kezhuw/leveldb/internal/file"
 	"github.com/kezhuw/leveldb/internal/files"
 	"github.com/kezhuw/leveldb/internal/keys"
-	"github.com/kezhuw/leveldb/internal/log"
 	"github.com/kezhuw/leveldb/internal/options"
+	"github.com/kezhuw/leveldb/internal/record"
 	"github.com/kezhuw/leveldb/internal/table"
 )
 
@@ -38,7 +38,7 @@ type Manifest struct {
 	logFileNumber  uint64
 	manifestNumber uint64
 
-	manifestLog        *log.Writer
+	manifestLog        *record.Writer
 	manifestFile       file.File
 	manifestNextNumber uint64
 
@@ -111,7 +111,7 @@ func (m *Manifest) resetCurrentManifest(snapshot *Edit) error {
 		return err
 	}
 
-	manifestLog := log.NewWriter(manifestFile, 0)
+	manifestLog := record.NewWriter(manifestFile, 0)
 	err = m.writeEdit(manifestLog, manifestFile, snapshot)
 	if err != nil {
 		manifestFile.Close()
@@ -134,7 +134,7 @@ func (m *Manifest) resetCurrentManifest(snapshot *Edit) error {
 	return nil
 }
 
-func (m *Manifest) writeEdit(log *log.Writer, file file.File, edit *Edit) error {
+func (m *Manifest) writeEdit(log *record.Writer, file file.File, edit *Edit) error {
 	m.scratch = edit.Encode(m.scratch[:0])
 	if err := log.Write(m.scratch); err != nil {
 		return err
@@ -251,7 +251,7 @@ func Create(dbname string, opts *options.Options) (manifest *Manifest, err error
 		}
 	}()
 
-	manifestLog := log.NewWriter(manifestFile, 0)
+	manifestLog := record.NewWriter(manifestFile, 0)
 	var edit Edit
 	edit.ComparatorName = opts.Comparator.UserKeyComparator.Name()
 	// Zero value of LogNumber/LastSequence/NextFileNumber are not encoded.
@@ -330,7 +330,7 @@ func Recover(dbname string, opts *options.Options) (*Manifest, error) {
 		lastSequence:   builder.LastSequence,
 		logFileNumber:  builder.LogNumber,
 		nextFileNumber: builder.NextFileNumber,
-		manifestLog:    log.NewWriter(manifestFile, offset),
+		manifestLog:    record.NewWriter(manifestFile, offset),
 		manifestFile:   manifestFile,
 		manifestNumber: manifestNumber,
 		liveFiles:      make(map[uint64]int),

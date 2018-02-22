@@ -6,7 +6,7 @@ import (
 	"github.com/kezhuw/leveldb/internal/errors"
 	"github.com/kezhuw/leveldb/internal/file"
 	"github.com/kezhuw/leveldb/internal/keys"
-	"github.com/kezhuw/leveldb/internal/log"
+	"github.com/kezhuw/leveldb/internal/record"
 )
 
 type builder struct {
@@ -22,17 +22,17 @@ type builder struct {
 
 func (b *builder) Build(v *Version) (int64, error) {
 	var edit Edit
-	r := log.NewReader(b.ManifestFile)
-	record := b.Scratch
+	r := record.NewReader(b.ManifestFile)
+	buf := b.Scratch
 	comparatorName := b.Comparator.UserKeyComparator.Name()
 	var err error
 	for {
-		record, err = r.AppendRecord(record[:0])
+		buf, err = r.AppendRecord(buf[:0])
 		switch err {
 		case nil:
 		case io.EOF:
 			goto done
-		case log.ErrIncompleteRecord:
+		case record.ErrIncompleteRecord:
 			offset := r.Offset()
 			b.ManifestFile.Truncate(offset)
 			b.ManifestFile.Seek(offset, io.SeekStart)
@@ -41,7 +41,7 @@ func (b *builder) Build(v *Version) (int64, error) {
 			return 0, err
 		}
 		edit.Reset()
-		if err := edit.Decode(record); err != nil {
+		if err := edit.Decode(buf); err != nil {
 			return 0, err
 		}
 		if edit.ComparatorName != "" && edit.ComparatorName != comparatorName {
@@ -61,7 +61,7 @@ func (b *builder) Build(v *Version) (int64, error) {
 		}
 	}
 done:
-	b.Scratch = record
+	b.Scratch = buf
 	v.computeCompactionScore()
 	return r.Offset(), nil
 }

@@ -8,8 +8,8 @@ import (
 	"github.com/kezhuw/leveldb/internal/errors"
 	"github.com/kezhuw/leveldb/internal/file"
 	"github.com/kezhuw/leveldb/internal/files"
-	"github.com/kezhuw/leveldb/internal/log"
 	"github.com/kezhuw/leveldb/internal/memtable"
+	"github.com/kezhuw/leveldb/internal/record"
 	"github.com/kezhuw/leveldb/internal/request"
 )
 
@@ -48,7 +48,7 @@ func (db *DB) openNextLog() {
 }
 
 func (db *DB) openLog(f file.File, offset int64, number uint64) {
-	db.log = log.NewWriter(f, offset)
+	db.log = record.NewWriter(f, offset)
 	db.logErr = nil
 	if db.logFile != nil {
 		db.logFile.Close()

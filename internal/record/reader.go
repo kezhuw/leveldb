@@ -1,4 +1,4 @@
-package log
+package record
 
 import (
 	"errors"
@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	ErrIncompleteRecord = errors.New("leveldb: incomplete log record")
-	ErrMismatchChecksum = errors.New("leveldb: corrupt log record: mismatch checksum")
+	ErrIncompleteRecord = errors.New("leveldb: incomplete record")
+	ErrMismatchChecksum = errors.New("leveldb: corrupt record: mismatch checksum")
 )
 
 type Reader struct {
@@ -30,7 +30,7 @@ func newReader(r io.Reader, blockSize int) *Reader {
 	return &Reader{r: r, buf: buf}
 }
 
-// NewReader creates a log reader to read from r. r must be in start of a block.
+// NewReader creates a record reader to read from r. r must be in start of a block.
 func NewReader(r io.Reader) *Reader {
 	return newReader(r, defaultBlockSize)
 }

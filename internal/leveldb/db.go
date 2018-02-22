@@ -17,11 +17,11 @@ import (
 	"github.com/kezhuw/leveldb/internal/files"
 	"github.com/kezhuw/leveldb/internal/iterator"
 	"github.com/kezhuw/leveldb/internal/keys"
-	"github.com/kezhuw/leveldb/internal/log"
 	"github.com/kezhuw/leveldb/internal/logger"
 	"github.com/kezhuw/leveldb/internal/manifest"
 	"github.com/kezhuw/leveldb/internal/memtable"
 	"github.com/kezhuw/leveldb/internal/options"
+	"github.com/kezhuw/leveldb/internal/record"
 	"github.com/kezhuw/leveldb/internal/request"
 )
 
@@ -46,7 +46,7 @@ type DB struct {
 	options *options.Options
 	locker  io.Closer
 
-	log       *log.Writer
+	log       *record.Writer
 	logFile   file.File
 	logNumber uint64
 
@@ -138,16 +138,16 @@ func (db *DB) loadLog(mem *memtable.MemTable, logNumber uint64, flag int, maxSeq
 	if err != nil {
 		return nil, 0, err
 	}
-	r := log.NewReader(logFile)
+	r := record.NewReader(logFile)
 	var batch batch.Batch
-	var record []byte
+	var buf []byte
 	for {
-		record, err = r.AppendRecord(record[:0])
+		buf, err = r.AppendRecord(buf[:0])
 		switch err {
 		case nil:
 		case io.EOF:
 			return logFile, r.Offset(), nil
-		case log.ErrIncompleteRecord:
+		case record.ErrIncompleteRecord:
 			offset := r.Offset()
 			logFile.Truncate(offset)
 			_, err = logFile.Seek(offset, io.SeekStart)
@@ -156,7 +156,7 @@ func (db *DB) loadLog(mem *memtable.MemTable, logNumber uint64, flag int, maxSeq
 			logFile.Close()
 			return nil, 0, err
 		}
-		batch.Reset(record)
+		batch.Reset(buf)
 		err = batch.Iterate(mem)
 		if err != nil {
 			logFile.Close()

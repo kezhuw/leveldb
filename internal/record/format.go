@@ -1,4 +1,4 @@
-package log
+package record
 
 import "github.com/kezhuw/leveldb/internal/crc"
 
