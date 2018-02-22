@@ -45,12 +45,12 @@ type Options struct {
 	// The default value points to SnappyCompression.
 	Compression CompressionType
 
-	// BlockSize specifys the minimum uncompressed size in bytes for a table block.
+	// BlockSize specifies the minimum uncompressed size in bytes for a table block.
 	//
 	// The default value is 4KiB.
 	BlockSize int
 
-	// BlockRestartInterval specifys the number of keys between restart points
+	// BlockRestartInterval specifies the number of keys between restart points
 	// for delta encoding of keys in a block.
 	//
 	// The default value is 16.
@@ -81,7 +81,7 @@ type Options struct {
 	// The default value is 1000.
 	MaxOpenFiles int
 
-	// BlockCacheCapacity specifys the capacity in bytes for block cache.
+	// BlockCacheCapacity specifies the capacity in bytes for block cache.
 	//
 	// The default value is 8MiB.
 	BlockCacheCapacity int
@@ -133,14 +133,14 @@ type Options struct {
 	// The default value is Level0SlowdownWriteFiles + 4.
 	Level0StopWriteFiles int
 
-	// Filter specifys a Filter to filter out unnecessary disk reads when looking for
+	// Filter specifies a Filter to filter out unnecessary disk reads when looking for
 	// a specific key. The filter is also used to generate filter data when building
 	// table files.
 	//
 	// The default value is nil.
 	Filter Filter
 
-	// Logger specifys a place that all internal progress/error information generated
+	// Logger specifies a place that all internal progress/error information generated
 	// by this db instance will be written to.
 	//
 	// The default value is a file named "LOG" stored under this db directory. You can
@@ -152,12 +152,12 @@ type Options struct {
 	// The default file system is built around os package.
 	FileSystem FileSystem
 
-	// CreateIfMissing specifys whether to create one if the database does not exist.
+	// CreateIfMissing specifies whether to create one if the database does not exist.
 	//
 	// The default value is false.
 	CreateIfMissing bool
 
-	// ErrorIfExists specifys whether to report a error if the database already exists.
+	// ErrorIfExists specifies whether to report a error if the database already exists.
 	//
 	// The default value is false.
 	ErrorIfExists bool
@@ -332,14 +332,14 @@ func convertOptions(opts *Options) *options.Options {
 
 // ReadOptions contains options controlling behaviours of read operations.
 type ReadOptions struct {
-	// DontFillCache specifys whether data read in this operation
+	// DontFillCache specifies whether data read in this operation
 	// should be cached in memory. If true, data read from underlying
 	// storage will not be cahced in memory for later reading, but
 	// if the data is already cached in memory, it will be used by
 	// this operation.
 	DontFillCache bool
 
-	// VerifyChecksums specifys whether data read from underlying
+	// VerifyChecksums specifies whether data read from underlying
 	// storage should be verified against saved checksums. Note that
 	// it never verify data cached in memory.
 	VerifyChecksums bool
@@ -355,7 +355,7 @@ func convertReadOptions(opts *ReadOptions) *options.ReadOptions {
 // WriteOptions contains options controlling write operations: Put, Delete,
 // and Write.
 type WriteOptions struct {
-	// Sync specifys whether to synchronize the write from OS cache to
+	// Sync specifies whether to synchronize the write from OS cache to
 	// underlying storage before the write is considered complete.
 	// Setting Sync to true may result in slower writes.
 	//
@@ -365,7 +365,7 @@ type WriteOptions struct {
 	//
 	// In other words, a write with false Sync has similar crash semantics
 	// as the "write()" system call. A write with true Sync has similar crash
-	/// semantics to a "write()" system call followed by "fsync()".
+	// semantics to a "write()" system call followed by "fsync()".
 	Sync bool
 }
 
