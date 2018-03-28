@@ -23,6 +23,122 @@ The only exporting package is the top level package. All other packages are inte
 Client can control concurrency of compactions through CompactionConcurrency option.
 
 
+## Usage
+
+### Create or open a database
+```go
+options := &leveldb.Options{
+	CreateIfMissing: true,
+	// ErrorIfExists:   true,
+	// Filter: leveldb.NewBloomFilter(16),
+}
+db, err := leveldb.Open("dbname", options)
+if err != nil {
+	// Handing failure
+}
+defer db.Close()
+```
+
+### Reads and writes
+```go
+var db *leveldb.DB
+var err error
+var key, value []byte
+
+// Put key value pair to db
+err = db.Put(key, value, nil)
+
+// Read key's value from db
+value, err = db.Get(key, nil)
+if err == leveldb.ErrNotFound {
+	// Key not found
+}
+
+// Delete key from db
+err = db.Delete(key, nil)
+```
+
+### Batch writes
+```go
+var db *leveldb.DB
+var err error
+var key, value []byte
+
+var batch leveldb.Batch
+batch.Put(key, value)
+batch.Delete(key)
+
+err = db.Write(batch, nil)
+```
+
+
+### Iteration
+```go
+var db *leveldb.DB
+var it leveldb.Iterator
+var err error
+var start, limit, prefix []byte
+
+// All keys from db
+it = db.All(nil)
+defer it.Release()
+for it.Next() {
+	fmt.Printf("key: %x, value: %x\n", it.Key(), it.Value())
+}
+err = it.Err()
+
+
+// All keys greater than or equal to given key from db
+it = db.Find(start, nil)
+defer it.Release()
+for it.Next() {
+}
+err = it.Err()
+
+
+// All keys in range [start, limit) from db
+it = db.Range(start, limit, nil)
+defer it.Release()
+for it.Next() {
+}
+err = it.Err()
+
+
+// All keys starts with prefix from db
+it = db.Prefix(prefix, nil)
+defer it.Release()
+for it.Next() {
+}
+err = it.Err()
+```
+
+### Snapshots
+```go
+var db *leveldb.DB
+var key, start, limit, prefix []byte
+
+snapshot := db.GetSnapshot()
+defer snapshot.Release()
+
+// Dup an snapshot for usage in another goroutine
+go func(ss *leveldb.Snapshot) {
+	defer ss.Release()
+	it := ss.Prefix(prefix, nil)
+	defer it.Release()
+	for it.Next() {
+	}
+}(snapshot.Dup())
+
+
+// Use snapshot in this goroutine
+value, err := snapshot.Get(key, nil)
+
+it := snapshot.Range(start, limit, nil)
+defer it.Release()
+for it.Next() {
+}
+```
+
 ## Benchmarks
 See [kezhuw/go-leveldb-benchmarks][go-leveldb-benchmarks].
 
