@@ -150,13 +150,13 @@ func (it *dbIterator) finalize() error {
 	}
 	it.status = iterator.Closed
 	it.db = nil
-	it.err = util.FirstError(it.err, it.iterator.Release())
+	it.err = util.FirstError(it.err, it.iterator.Close())
 	it.base = nil
 	it.iterator = nil
 	return it.Err()
 }
 
-func (it *dbIterator) Release() error {
+func (it *dbIterator) Close() error {
 	runtime.SetFinalizer(it, nil)
 	return it.finalize()
 }

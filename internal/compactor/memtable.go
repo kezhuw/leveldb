@@ -72,7 +72,7 @@ func (c *memtableCompactor) compact() (*manifest.FileMeta, error) {
 	}()
 
 	it := c.mem.NewIterator()
-	defer it.Release()
+	defer it.Close()
 
 	if !it.First() {
 		return nil, it.Err()

@@ -209,7 +209,7 @@ func (c *levelCompactor) add(key, value []byte, firstTime bool) error {
 
 func (c *levelCompactor) compact() error {
 	it := c.NewIterator()
-	defer it.Release()
+	defer it.Close()
 
 	ucmp := c.options.Comparator.UserKeyComparator
 	var lastKey keys.InternalKey

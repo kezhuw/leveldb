@@ -68,7 +68,7 @@ func (it *fileIterator) Err() error {
 	return nil
 }
 
-func (it *fileIterator) Release() error {
+func (it *fileIterator) Close() error {
 	it.opts = nil
 	it.icmp = nil
 	it.files = nil

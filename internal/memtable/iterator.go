@@ -54,7 +54,7 @@ func (it *memtableIterator) Err() error {
 	return nil
 }
 
-func (it *memtableIterator) Release() error {
+func (it *memtableIterator) Close() error {
 	it.m = nil
 	it.n = nil
 	return nil

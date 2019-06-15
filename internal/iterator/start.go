@@ -74,8 +74,8 @@ func (it *startIterator) Err() error {
 	return it.iter.Err()
 }
 
-func (it *startIterator) Release() error {
-	return it.iter.Release()
+func (it *startIterator) Close() error {
+	return it.iter.Close()
 }
 
 func newStartIterator(start []byte, cmp keys.Comparer, it Iterator) Iterator {

@@ -197,7 +197,7 @@ func (r *reader) Err() error {
 	return r.err
 }
 
-func (r *reader) Release() error {
+func (r *reader) Close() error {
 	r.contents = nil
 	return r.err
 }

@@ -80,12 +80,12 @@ func (it *sliceIterator) Err() error {
 	return nil
 }
 
-func (it *sliceIterator) Release() error {
+func (it *sliceIterator) Close() error {
 	it.entries = nil
 	return nil
 }
 
-func (it *sliceIterator) released() bool {
+func (it *sliceIterator) closed() bool {
 	return it.entries == nil
 }
 
