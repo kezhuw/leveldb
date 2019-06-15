@@ -168,11 +168,11 @@ func (m *mergeIterator) Err() error {
 	return m.err
 }
 
-func (m *mergeIterator) Release() error {
+func (m *mergeIterator) Close() error {
 	err := m.err
 	m.iterators = m.iterators[:cap(m.iterators)]
 	for _, it := range m.iterators {
-		err = util.FirstError(err, it.Release())
+		err = util.FirstError(err, it.Close())
 	}
 	m.err = err
 	m.current = nil

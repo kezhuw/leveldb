@@ -66,21 +66,21 @@ func (it *indexIterator) Err() error {
 	return it.err
 }
 
-func (it *indexIterator) Release() error {
-	it.data.Release()
+func (it *indexIterator) Close() error {
+	it.data.Close()
 	it.data = empty
-	it.index.Release()
+	it.index.Close()
 	it.index = empty
 	return it.err
 }
 
 func (it *indexIterator) clearData() {
-	it.data.Release()
+	it.data.Close()
 	it.data = empty
 }
 
 func (it *indexIterator) resetData() {
-	it.data.Release()
+	it.data.Close()
 	it.data = it.blockf(it.index.Value())
 }
 

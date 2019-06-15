@@ -16,7 +16,7 @@ var (
 	ErrComparatorMismatch = errors.New("leveldb: comparator mismatch")
 	ErrOverlappedTables   = errors.New("leveldb: overlapped tables in level 1+")
 	ErrBatchTooManyWrites = errors.New("leveldb: too many writes in one batch")
-	ErrSnapshotReleased   = errors.New("leveldb: snapshot released")
+	ErrSnapshotClosed     = errors.New("leveldb: snapshot closed")
 	ErrEmptyMemTable      = errors.New("leveldb: empty memtable")
 )
 

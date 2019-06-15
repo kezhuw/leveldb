@@ -371,21 +371,21 @@ func TestMergeIteratorError(t *testing.T) {
 	}
 }
 
-func TestMergeIteratorReleased(t *testing.T) {
+func TestMergeIteratorClosed(t *testing.T) {
 	for i, test := range mergeIteratorIterationTests {
 		iterators := buildSliceIterators(test.merges)
 		mergeIt := iterator.NewMergeIterator(keys.BytewiseComparator, iterators...)
 		for j, it := range iterators {
 			sliceIt := it.(*sliceIterator)
-			if released := sliceIt.released(); released {
-				t.Errorf("test=%d-%d got=%t want=%t", i, j, released, false)
+			if closed := sliceIt.closed(); closed {
+				t.Errorf("test=%d-%d got=%t want=%t", i, j, closed, false)
 			}
 		}
-		mergeIt.Release()
+		mergeIt.Close()
 		for j, it := range iterators {
 			sliceIt := it.(*sliceIterator)
-			if released := sliceIt.released(); !released {
-				t.Errorf("test=%d-%d-released got=%t want=%t", i, j, released, true)
+			if closed := sliceIt.closed(); !closed {
+				t.Errorf("test=%d-%d-closed got=%t want=%t", i, j, closed, true)
 			}
 		}
 	}

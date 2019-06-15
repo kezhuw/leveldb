@@ -13,8 +13,8 @@ func (*emptyIterator) Valid() bool      { return false }
 func (*emptyIterator) Key() []byte   { panic("leveldb: empty iterator") }
 func (*emptyIterator) Value() []byte { panic("leveldb: empty iterator") }
 
-func (*emptyIterator) Err() error     { return nil }
-func (*emptyIterator) Release() error { return nil }
+func (*emptyIterator) Err() error   { return nil }
+func (*emptyIterator) Close() error { return nil }
 
 var empty = (*emptyIterator)(nil)
 
@@ -23,7 +23,7 @@ var empty = (*emptyIterator)(nil)
 // This empty iterator has following properties:
 // * First/Last/Seek/Valid return false.
 // * Next/Prev/Key/Value panic.
-// * Err/Release return nil.
+// * Err/Close return nil.
 func Empty() Iterator {
 	return empty
 }

@@ -31,7 +31,7 @@ func (t *Table) readMetaBlocks(metaIndexHandle block.Handle) {
 	}
 	cmp := keys.BytewiseComparator
 	it := metaIndex.NewIterator(cmp)
-	defer it.Release()
+	defer it.Close()
 	filterName := []byte("filter." + t.options.Filter.Name())
 	if !it.Seek(filterName) || cmp.Compare(filterName, it.Key()) != 0 {
 		return
@@ -50,10 +50,10 @@ func (t *Table) readMetaBlocks(metaIndexHandle block.Handle) {
 func (t *Table) Get(ikey keys.InternalKey, opts *options.ReadOptions) ([]byte, error, bool) {
 	indexIt := t.dataIndex.NewIterator(t.options.Comparator)
 	if !indexIt.Seek(ikey) {
-		err := indexIt.Release()
+		err := indexIt.Close()
 		return nil, err, err != nil
 	}
-	defer indexIt.Release()
+	defer indexIt.Close()
 
 	h, n := block.DecodeHandle(indexIt.Value())
 	if n <= 0 {
@@ -65,10 +65,10 @@ func (t *Table) Get(ikey keys.InternalKey, opts *options.ReadOptions) ([]byte, e
 
 	dataIt := t.readBlockHandleIterator(h, opts)
 	if !dataIt.Seek(ikey) {
-		err := dataIt.Release()
+		err := dataIt.Close()
 		return nil, err, err != nil
 	}
-	defer dataIt.Release()
+	defer dataIt.Close()
 
 	ukey, _, kind := keys.InternalKey(dataIt.Key()).Split()
 	if t.options.Comparator.UserKeyComparator.Compare(ukey, ikey.UserKey()) == 0 {

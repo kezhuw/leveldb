@@ -115,8 +115,8 @@ func (it *rangeIterator) Err() error {
 	return it.iter.Err()
 }
 
-func (it *rangeIterator) Release() error {
-	return it.iter.Release()
+func (it *rangeIterator) Close() error {
+	return it.iter.Close()
 }
 
 // NewRangeIterator creates a range iterator for keys in range [start, limit).

@@ -1,6 +1,7 @@
 package leveldb
 
 import (
+	"io"
 	"runtime"
 
 	"github.com/kezhuw/leveldb/internal/errors"
@@ -39,14 +40,14 @@ func (ss *Snapshot) Dup() *Snapshot {
 	case ss.err != nil:
 		return &Snapshot{err: ss.err}
 	case ss.shared == nil:
-		return &Snapshot{err: errors.ErrSnapshotReleased}
+		return &Snapshot{err: errors.ErrSnapshotClosed}
 	}
 	ss.shared.Retain()
 	return newSnapshot(ss.shared)
 }
 
-// Release releases any resources hold by this snapshot.
-func (ss *Snapshot) Release() error {
+// Close releases any resources hold by this snapshot.
+func (ss *Snapshot) Close() error {
 	runtime.SetFinalizer(ss, nil)
 	return ss.finalize()
 }
@@ -58,7 +59,7 @@ func (ss *Snapshot) Get(key []byte, opts *ReadOptions) ([]byte, error) {
 	case ss.err != nil:
 		return nil, ss.err
 	case ss.shared == nil:
-		return nil, errors.ErrSnapshotReleased
+		return nil, errors.ErrSnapshotClosed
 	}
 	return ss.shared.Get(key, convertReadOptions(opts))
 }
@@ -85,3 +86,5 @@ func (ss *Snapshot) Range(start, limit []byte, opts *ReadOptions) Iterator {
 func (ss *Snapshot) Prefix(prefix []byte, opts *ReadOptions) Iterator {
 	return ss.shared.Prefix(prefix, convertReadOptions(opts))
 }
+
+var _ io.Closer = (*Snapshot)(nil)

@@ -236,18 +236,18 @@ func TestRangeIteratorSeekBackward(t *testing.T) {
 	}
 }
 
-func TestRangeIteratorRelease(t *testing.T) {
+func TestRangeIteratorClose(t *testing.T) {
 	for i, test := range rangeIteratorTests {
 		for j, r := range test.ranges {
 			it := newSliceIterator(test.entries)
 			rangeIt := iterator.NewRangeIterator([]byte(r.start), []byte(r.limit), keys.BytewiseComparator, it)
 			sliceIt := it.(*sliceIterator)
-			if released := sliceIt.released(); released {
-				t.Errorf("test=%d-%d got=%t want=%t", i, j, released, false)
+			if closed := sliceIt.closed(); closed {
+				t.Errorf("test=%d-%d got=%t want=%t", i, j, closed, false)
 			}
-			rangeIt.Release()
-			if released := sliceIt.released(); !released {
-				t.Errorf("test=%d-%d-released got=%t want=%t", i, j, released, true)
+			rangeIt.Close()
+			if closed := sliceIt.closed(); !closed {
+				t.Errorf("test=%d-%d-closed got=%t want=%t", i, j, closed, true)
 			}
 		}
 	}

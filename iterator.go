@@ -1,6 +1,10 @@
 package leveldb
 
-import "github.com/kezhuw/leveldb/internal/iterator"
+import (
+	"io"
+
+	"github.com/kezhuw/leveldb/internal/iterator"
+)
 
 // Iterator defines methods to iterate through a set of data. The initial
 // status of an newly created iterator is invalid. Client must call one of
@@ -40,11 +44,13 @@ type Iterator interface {
 	// clear this error.
 	Err() error
 
-	// Release releases any resources hold by this iterator, and returns
+	// Closes releases any resources hold by this iterator, and returns
 	// any error it encounters so far. The behaviour is undefined if you
 	// call any methods after this iterator has been closed.
-	Release() error
+	Close() error
 }
+
+var _ io.Closer = (Iterator)(nil)
 
 var _ Iterator = (iterator.Iterator)(nil)
 var _ iterator.Iterator = (Iterator)(nil)

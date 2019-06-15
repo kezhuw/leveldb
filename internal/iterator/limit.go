@@ -93,8 +93,8 @@ func (it *limitIterator) Err() error {
 	return it.iter.Err()
 }
 
-func (it *limitIterator) Release() error {
-	return it.iter.Release()
+func (it *limitIterator) Close() error {
+	return it.iter.Close()
 }
 
 func newLimitIterator(limit []byte, cmp keys.Comparer, it Iterator) Iterator {
