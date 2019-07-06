@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"reflect"
 	"testing"
 
 	"github.com/kezhuw/leveldb/internal/compaction"
@@ -424,4 +425,112 @@ func TestConvertWriteOptions(t *testing.T) {
 			t.Errorf("test=%d got=%v want=%v", i, *opts, test.want)
 		}
 	}
+}
+
+func buildFieldMap(typ reflect.Type) map[string]reflect.StructField {
+	fields := make(map[string]reflect.StructField)
+	for i, n := 0, typ.NumField(); i < n; i++ {
+		field := typ.Field(i)
+		fields[field.Name] = field
+	}
+	return fields
+}
+
+func testFieldType(t *testing.T, typ reflect.Type, field reflect.StructField, target reflect.Type) {
+	if field.Type != target {
+		t.Errorf("%s.%s got type %s, want %s", typ, field.Name, field.Type, target)
+	}
+}
+
+func TestOptionsType(t *testing.T) {
+	unmatchedFields := map[string]struct {
+		apiType      reflect.Type
+		internalType reflect.Type
+	}{
+		"Comparator": {
+			apiType:      reflect.TypeOf((*Comparator)(nil)).Elem(),
+			internalType: reflect.TypeOf((*keys.InternalComparator)(nil)),
+		},
+		"Compression": {
+			apiType:      reflect.TypeOf(DefaultCompression),
+			internalType: reflect.TypeOf(compress.NoCompression),
+		},
+		"Filter": {
+			apiType:      reflect.TypeOf((*Filter)(nil)).Elem(),
+			internalType: reflect.TypeOf((*filter.Filter)(nil)).Elem(),
+		},
+		"Logger": {
+			apiType:      reflect.TypeOf((*Logger)(nil)).Elem(),
+			internalType: reflect.TypeOf((*logger.LogCloser)(nil)).Elem(),
+		},
+		"FileSystem": {
+			apiType:      reflect.TypeOf((*FileSystem)(nil)).Elem(),
+			internalType: reflect.TypeOf((*file.FileSystem)(nil)).Elem(),
+		},
+	}
+	apiType := reflect.TypeOf(Options{})
+	internalType := reflect.TypeOf(options.Options{})
+	internalFields := buildFieldMap(internalType)
+	for i, n := 0, apiType.NumField(); i < n; i++ {
+		field := apiType.Field(i)
+		if field.PkgPath != "" {
+			t.Errorf("Field %s.%s is unexported", apiType, field.Name)
+		}
+		internalField, ok := internalFields[field.Name]
+		if !ok {
+			t.Errorf("%s has field %s but %s does not", apiType, field.Name, internalType)
+			continue
+		}
+		delete(internalFields, field.Name)
+		unmatched, ok := unmatchedFields[field.Name]
+		if ok {
+			testFieldType(t, apiType, field, unmatched.apiType)
+			testFieldType(t, internalType, internalField, unmatched.internalType)
+			continue
+		}
+		if field.Type != internalField.Type {
+			t.Errorf("%s.%s has type %s, but %s.%s has type %s", apiType, field.Name, field.Type, internalType, internalField.Name, internalField.Type)
+		}
+	}
+	for name, _ := range internalFields {
+		t.Errorf("%s has field %s but %s does not", internalType, name, apiType)
+	}
+}
+
+func testOptionsLayout(t *testing.T, apiType reflect.Type, internalType reflect.Type) {
+	n, m := apiType.NumField(), internalType.NumField()
+	i := 0
+	for ; i < n && i < m; i++ {
+		field := apiType.Field(i)
+		if field.PkgPath != "" {
+			t.Errorf("Field %s.%s is unexported", apiType, field.Name)
+		}
+		internalField := internalType.Field(i)
+		if field.Name != internalField.Name {
+			t.Fatalf("Mismatch field name at index %d: %s.%s and %s.%s", i+1, apiType, field.Name, internalType, internalField.Name)
+		}
+		if field.Type != internalField.Type {
+			t.Errorf("Field %s.%s has type %s, but %s.%s got type %s", apiType, field.Name, field.Type, internalType, internalField.Name, internalField.Type)
+		}
+	}
+	for j := i; j < n; j++ {
+		field := apiType.Field(j)
+		t.Errorf("%s has field %s but %s does not", apiType, field.Name, internalType)
+	}
+	for j := i; j < m; j++ {
+		field := internalType.Field(j)
+		t.Errorf("%s has field %s but %s does not", internalType, field.Name, apiType)
+	}
+}
+
+func TestReadOptionsType(t *testing.T) {
+	apiType := reflect.TypeOf(ReadOptions{})
+	internalType := reflect.TypeOf(options.ReadOptions{})
+	testOptionsLayout(t, apiType, internalType)
+}
+
+func TestWriteOptionsType(t *testing.T) {
+	apiType := reflect.TypeOf(WriteOptions{})
+	internalType := reflect.TypeOf(options.WriteOptions{})
+	testOptionsLayout(t, apiType, internalType)
 }
