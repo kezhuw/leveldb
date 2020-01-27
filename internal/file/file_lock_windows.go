@@ -6,7 +6,7 @@ import (
 )
 
 type lockCloser struct {
-	fd syscall.Handlle
+	fd syscall.Handle
 }
 
 func (l lockCloser) Close() error {
@@ -30,5 +30,5 @@ func (osFileSystem) Lock(name string) (io.Closer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return lockCloser{fd: fd}
+	return lockCloser{fd: fd}, nil
 }
