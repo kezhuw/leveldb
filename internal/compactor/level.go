@@ -212,15 +212,15 @@ func (c *levelCompactor) compact() error {
 	defer it.Close()
 
 	ucmp := c.options.Comparator.UserKeyComparator
-	var lastKey keys.InternalKey
 	var lastSequence keys.Sequence
+	var lastKey []byte
 	for it.Next() {
 		ikey, ok := keys.ToInternalKey(it.Key())
 		if !ok {
 			return errors.ErrCorruptInternalKey
 		}
 		currentUserKey, currentSequence, kind := ikey.Split()
-		if len(lastKey) == 0 || ucmp.Compare(lastKey.UserKey(), currentUserKey) != 0 {
+		if len(lastKey) == 0 || ucmp.Compare(lastKey, currentUserKey) != 0 {
 			lastKey = append(lastKey[:0], currentUserKey...)
 			lastSequence = keys.MaxSequence
 		}
