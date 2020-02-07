@@ -67,11 +67,10 @@ type DB struct {
 	snapshots   snapshotList
 	snapshotsMu sync.Mutex
 
-	compactionFile     chan manifest.LevelFileMeta
-	compactionLevel    chan struct{}
-	compactionMemtable chan *memtable.MemTable
+	compactionFile        chan manifest.LevelFileMeta
+	compactionRequestChan chan *compactionRequest
 
-	memtableEdit     chan *manifest.Edit
+	memtableEdit     chan compactionEdit
 	compactionEdit   chan compactionEdit
 	compactionResult chan compactionResult
 
@@ -295,6 +294,7 @@ func (db *DB) Close() error {
 	}
 	db.closeLog(nil)
 	db.options.Logger.Close()
+	close(db.compactionRequestChan)
 	return nil
 }
 
@@ -383,12 +383,11 @@ func initDB(db *DB, name string, m *manifest.Manifest, locker io.Closer, opts *o
 	db.nextLogFileErr = make(chan error, 1)
 	db.manifestErrChan = make(chan error, 1)
 	db.compactionErrChan = make(chan error, 1)
-	db.memtableEdit = make(chan *manifest.Edit, 1)
+	db.memtableEdit = make(chan compactionEdit, 1)
 	db.compactionEdit = make(chan compactionEdit, configs.NumberLevels)
 	db.compactionResult = make(chan compactionResult, configs.NumberLevels)
 	db.compactionFile = make(chan manifest.LevelFileMeta, 128)
-	db.compactionLevel = make(chan struct{}, 1)
-	db.compactionMemtable = make(chan *memtable.MemTable, 1)
+	db.compactionRequestChan = make(chan *compactionRequest, 10)
 	db.obsoleteFilesChan = make(chan uint64, configs.NumberLevels)
 	db.snapshots.Init()
 	runtime.SetFinalizer(db, (*DB).finalize)
