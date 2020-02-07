@@ -127,7 +127,8 @@ func (registry *Registry) Complete(level int) {
 	for i, r := range registry.registrations {
 		if r.level == level {
 			last := len(registry.registrations) - 1
-			registry.registrations[i], registry.registrations[last] = registry.registrations[last], registry.registrations[i]
+			registry.registrations[i] =  registry.registrations[last]
+			registry.registrations[last] =  nil
 			registry.registrations = registry.registrations[:last]
 			return
 		}
