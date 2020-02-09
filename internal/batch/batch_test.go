@@ -38,6 +38,12 @@ var bunchCases = map[string]batchCase{
 			{keys.Value, "\x93\x0a\xc3", "mbiojfasf"},
 		},
 	},
+	"test3": {
+		32423421,
+		[]writeCase{
+			{keys.Delete, "a", ""},
+		},
+	},
 }
 
 func addBatchWrites(t *testing.T, b *batch.Batch, name string, cases []writeCase) {
