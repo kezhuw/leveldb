@@ -98,3 +98,12 @@ func (db *DB) GetSnapshot() *Snapshot {
 	}
 	return newSnapshot(ss)
 }
+
+// CompactRange compacts keys in range [start, limit] to max level these keys
+// reside in currently.
+//
+// Zero length start acts as infinite small, zero length limit acts as
+// infinite large.
+func (db *DB) CompactRange(start, limit []byte) error {
+	return db.db.CompactRange(start, limit)
+}

@@ -40,7 +40,6 @@ func (db *DB) switchMemTable(mem *memtable.MemTable) *memtable.MemTable {
 		// Use version from compaction goroutine.
 		new.version = old.version
 	}
-	db.compactionRequestChan <- &compactionRequest{MemTable: imm}
 	return mem
 }
 

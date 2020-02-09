@@ -180,6 +180,22 @@ func (db *DB) serveMerge() {
 	}
 }
 
+type manualCompaction struct {
+	start []byte
+	limit []byte
+	reply chan error
+}
+
+func (db *DB) CompactRange(start, limit []byte) error {
+	compaction := &manualCompaction{
+		start: start,
+		limit: limit,
+		reply: make(chan error, 1),
+	}
+	db.manualCompactionChan <- compaction
+	return <-compaction.reply
+}
+
 func (db *DB) serveWrite() {
 	defer db.bgGroup.Done()
 	compactionClosed := make(chan struct{})
@@ -188,13 +204,32 @@ func (db *DB) serveWrite() {
 	var lastErr error
 	var requests chan request.Request
 	var slowdown <-chan time.Time
+	var pendingManualCompaction *manualCompaction
 	mem := db.bundle.mem
+	manualCompactionChan := db.manualCompactionChan
 	// There may be too many files in level-0 to throttle writes, fire
 	// an level compaction to solve this.
 	db.tryLevelCompaction()
 	for db.requests != nil || db.nextLogNumber != 0 || compactionClosed != nil {
 		requests, slowdown = db.throttleLog(slowdown)
 		select {
+		case manualCompaction := <- manualCompactionChan:
+			if lastErr != nil {
+				manualCompaction.reply <- lastErr
+				break
+			}
+			if !mem.Overlap(manualCompaction.start, manualCompaction.limit) {
+				db.compactionRequestChan <- &compactionRequest{
+					Start:        manualCompaction.start,
+					Limit:        manualCompaction.limit,
+					Reply:        manualCompaction.reply,
+					Manual:       true,
+				}
+				break
+			}
+			db.tryOpenNextLog()
+			pendingManualCompaction = manualCompaction
+			manualCompactionChan = nil
 		case <-compactionClosed:
 			compactionClosed = nil
 		case logFile := <-db.nextLogFile:
@@ -203,7 +238,22 @@ func (db *DB) serveWrite() {
 				break
 			}
 			db.openLog(logFile, 0, db.nextLogNumber)
+			imm := mem
 			mem = db.switchMemTable(mem)
+			switch {
+			case pendingManualCompaction != nil:
+				db.compactionRequestChan <- &compactionRequest{
+					MemTable:     imm,
+					Start:        pendingManualCompaction.start,
+					Limit:        pendingManualCompaction.limit,
+					Reply:        pendingManualCompaction.reply,
+					Manual:       true,
+				}
+				pendingManualCompaction = nil
+				manualCompactionChan = db.manualCompactionChan
+			default:
+				db.compactionRequestChan <- &compactionRequest{MemTable: imm}
+			}
 			db.nextLogNumber = 0
 			lastErr = nil
 		case lastErr = <-db.nextLogFileErr:
@@ -225,5 +275,8 @@ func (db *DB) serveWrite() {
 			}
 			slowdown = nil
 		}
+	}
+	if pendingManualCompaction != nil {
+		pendingManualCompaction.reply <- errors.ErrDBClosed
 	}
 }

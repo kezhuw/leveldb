@@ -245,14 +245,14 @@ restart:
 	o.Start()
 	for _, f := range files {
 		switch {
-		case ucmp.Compare(smallest.UserKey(), f.Largest.UserKey()) > 0:
+		case smallest != nil && ucmp.Compare(smallest.UserKey(), f.Largest.UserKey()) > 0:
 			continue
-		case ucmp.Compare(largest.UserKey(), f.Smallest.UserKey()) < 0:
+		case largest != nil && ucmp.Compare(largest.UserKey(), f.Smallest.UserKey()) < 0:
 			continue
 		}
 		o.Overlap(f)
-		lowerBoundExtended := ucmp.Compare(f.Smallest.UserKey(), smallest.UserKey()) < 0
-		upperBoundExtended := ucmp.Compare(f.Largest.UserKey(), largest.UserKey()) > 0
+		lowerBoundExtended := smallest != nil && ucmp.Compare(f.Smallest.UserKey(), smallest.UserKey()) < 0
+		upperBoundExtended := largest != nil && ucmp.Compare(f.Largest.UserKey(), largest.UserKey()) > 0
 		if lowerBoundExtended || upperBoundExtended {
 			if lowerBoundExtended {
 				smallest = f.Smallest
@@ -275,20 +275,47 @@ func (v *Version) overlapLeveln(o overlayer, level int, smallest, largest keys.I
 	o.Start()
 	defer o.Done()
 	n := len(files)
-	i := sort.Search(n, func(i int) bool { return ucmp.Compare(smallest.UserKey(), files[i].Largest.UserKey()) <= 0 })
-	if i == n || ucmp.Compare(largest.UserKey(), files[i].Smallest.UserKey()) < 0 {
-		return
+	i := 0
+	if smallest != nil {
+		i = sort.Search(n, func(i int) bool { return ucmp.Compare(smallest.UserKey(), files[i].Largest.UserKey()) <= 0 })
 	}
-	o.Overlap(files[i])
-	for i++; i < n; i++ {
-		if ucmp.Compare(largest.UserKey(), files[i].Smallest.UserKey()) < 0 {
+	for ; i < n; i++ {
+		if largest != nil && ucmp.Compare(largest.UserKey(), files[i].Smallest.UserKey()) < 0 {
 			break
 		}
 		o.Overlap(files[i])
 	}
 }
 
+func toInternalKeyRange(start, limit []byte) (startInternalKey, limitInternalKey keys.InternalKey) {
+	if start != nil {
+		startInternalKey = keys.NewInternalKey(start, keys.MaxSequence, keys.Seek)
+	}
+	if limit != nil {
+		limitInternalKey = keys.NewInternalKey(limit, 0, 0)
+	}
+	return startInternalKey, limitInternalKey
+}
+
+func (v *Version) OverlapLevel(level int, start, limit []byte) bool {
+	startInternalKey, limitInternalKey := toInternalKeyRange(start, limit)
+	return v.isOverlappingWithLevel(level, startInternalKey, limitInternalKey)
+}
+
+// NextOverlappingLevel returns first overlapping level in range [level, maxLevel] with start and limit.
+func (v *Version) NextOverlapingLevel(level int, start, limit []byte) int {
+	for ; level < configs.NumberLevels; level++ {
+		if v.OverlapLevel(level, start, limit) {
+			return level
+		}
+	}
+	return -1
+}
+
 func (v *Version) isOverlappingWithLevel(level int, smallest, largest keys.InternalKey) (overlapped bool) {
+	if smallest == nil && largest == nil {
+		return len(v.Levels[level]) != 0
+	}
 	var b panicBoolOverlayer
 	defer func() {
 		if r := recover(); r != nil {
@@ -458,6 +485,19 @@ func (v *Version) pickCompactions(registry *compaction.Registry, pendingFiles []
 	compactions = v.appendScoreCompactions(compactions, registry, nextFileNumber)
 	compactions = v.appendFileCompactions(compactions, registry, pendingFiles, nextFileNumber)
 	return compactions
+}
+
+func (v *Version) PickRangeCompaction(registry *compaction.Registry, level int, start, limit []byte) *Compaction {
+	startInternalKey, limitInternalKey := toInternalKeyRange(start, limit)
+	overlappingFiles := v.appendOverlappingFiles(nil, level, startInternalKey, limitInternalKey)
+	if len(overlappingFiles) == 0 {
+		return nil
+	}
+	registration := registry.Register(level, level+1)
+	if registration == nil {
+		return nil
+	}
+	return v.newLevelCompaction(registration, level, overlappingFiles)
 }
 
 func (v *Version) PickLevelForMemTableOutput(smallest, largest []byte) int {

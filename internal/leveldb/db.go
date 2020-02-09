@@ -60,6 +60,8 @@ type DB struct {
 	manifestErrChan   chan error
 	compactionErrChan chan error
 
+	manualCompactionChan chan *manualCompaction
+
 	nextLogFile    chan file.File
 	nextLogNumber  uint64
 	nextLogFileErr chan error
@@ -294,6 +296,7 @@ func (db *DB) Close() error {
 	}
 	db.closeLog(nil)
 	db.options.Logger.Close()
+	close(db.manualCompactionChan)
 	close(db.compactionRequestChan)
 	return nil
 }
@@ -387,6 +390,7 @@ func initDB(db *DB, name string, m *manifest.Manifest, locker io.Closer, opts *o
 	db.compactionEdit = make(chan compactionEdit, configs.NumberLevels)
 	db.compactionResult = make(chan compactionResult, configs.NumberLevels)
 	db.compactionFile = make(chan manifest.LevelFileMeta, 128)
+	db.manualCompactionChan = make(chan *manualCompaction)
 	db.compactionRequestChan = make(chan *compactionRequest, 10)
 	db.obsoleteFilesChan = make(chan uint64, configs.NumberLevels)
 	db.snapshots.Init()
