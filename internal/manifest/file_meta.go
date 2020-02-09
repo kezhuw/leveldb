@@ -41,6 +41,16 @@ func (f *FileMeta) seekThrough() bool {
 	return r <= 0 && r > -2
 }
 
+func (f *FileMeta) overlap(cmp keys.Comparer, start, limit []byte) bool {
+	if start != nil && cmp.Compare(start, f.Largest.UserKey()) > 0 {
+		return false
+	}
+	if limit != nil && cmp.Compare(limit, f.Smallest.UserKey()) < 0 {
+		return false
+	}
+	return true
+}
+
 // GoString implements fmt.GoStringer.
 func (f *FileMeta) GoString() string {
 	return fmt.Sprintf("%#v", *f)

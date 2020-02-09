@@ -26,6 +26,10 @@ type node struct {
 	nexts []*node
 }
 
+func (n *node) UserKey() []byte {
+	return keys.InternalKey(n.ikey).UserKey()
+}
+
 type MemTable struct {
 	rnd *rand.Rand
 
@@ -195,7 +199,7 @@ func (m *MemTable) Get(ikey keys.InternalKey) (value []byte, err error, ok bool)
 	m.mutex.RLock()
 	n, hit := m.findGreaterOrEqual(ikey, nil)
 	m.mutex.RUnlock()
-	if n != nil && (hit || m.icmp.UserKeyComparator.Compare(ikey.UserKey(), keys.InternalKey(n.ikey).UserKey()) == 0) {
+	if n != nil && (hit || m.icmp.UserKeyComparator.Compare(ikey.UserKey(), n.UserKey()) == 0) {
 		if n.value == nil {
 			err = errors.ErrNotFound
 		}
@@ -206,6 +210,22 @@ func (m *MemTable) Get(ikey keys.InternalKey) (value []byte, err error, ok bool)
 
 func (m *MemTable) NewIterator() iterator.Iterator {
 	return &memtableIterator{m: m}
+}
+
+func (m *MemTable) Overlap(start, limit []byte) bool {
+	firstNode := m.head.nexts[0]
+	if firstNode == nil {
+		return false
+	}
+	cmp := m.icmp.UserKeyComparator
+	if limit != nil && cmp.Compare(limit, firstNode.UserKey()) < 0 {
+		return false
+	}
+	lastNode := m.findLast()
+	if start != nil && cmp.Compare(start, lastNode.UserKey()) > 0 {
+		return false
+	}
+	return true
 }
 
 func New(icmp *keys.InternalComparator) *MemTable {
