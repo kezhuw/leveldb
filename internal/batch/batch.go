@@ -50,7 +50,8 @@ func (b *Batch) grow(n int) (scratch []byte, ok bool) {
 	n += binary.MaxVarintLen64
 	l, z := len(b.data), cap(b.data)
 	if l+n > z {
-		z += z/2 + n
+		// Add batchHeaderSize for initial grow without conditional test.
+		z += z/2 + n + batchHeaderSize
 		buf := make([]byte, l, z)
 		copy(buf, b.data)
 		b.data = buf
