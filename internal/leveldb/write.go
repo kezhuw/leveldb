@@ -213,17 +213,17 @@ func (db *DB) serveWrite() {
 	for db.requests != nil || db.nextLogNumber != 0 || compactionClosed != nil {
 		requests, slowdown = db.throttleLog(slowdown)
 		select {
-		case manualCompaction := <- manualCompactionChan:
+		case manualCompaction := <-manualCompactionChan:
 			if lastErr != nil {
 				manualCompaction.reply <- lastErr
 				break
 			}
 			if !mem.Overlap(manualCompaction.start, manualCompaction.limit) {
 				db.compactionRequestChan <- &compactionRequest{
-					Start:        manualCompaction.start,
-					Limit:        manualCompaction.limit,
-					Reply:        manualCompaction.reply,
-					Manual:       true,
+					Start:  manualCompaction.start,
+					Limit:  manualCompaction.limit,
+					Reply:  manualCompaction.reply,
+					Manual: true,
 				}
 				break
 			}
@@ -243,11 +243,11 @@ func (db *DB) serveWrite() {
 			switch {
 			case pendingManualCompaction != nil:
 				db.compactionRequestChan <- &compactionRequest{
-					MemTable:     imm,
-					Start:        pendingManualCompaction.start,
-					Limit:        pendingManualCompaction.limit,
-					Reply:        pendingManualCompaction.reply,
-					Manual:       true,
+					MemTable: imm,
+					Start:    pendingManualCompaction.start,
+					Limit:    pendingManualCompaction.limit,
+					Reply:    pendingManualCompaction.reply,
+					Manual:   true,
 				}
 				pendingManualCompaction = nil
 				manualCompactionChan = db.manualCompactionChan

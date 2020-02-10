@@ -127,8 +127,8 @@ func (registry *Registry) Complete(level int) {
 	for i, r := range registry.registrations {
 		if r.level == level {
 			last := len(registry.registrations) - 1
-			registry.registrations[i] =  registry.registrations[last]
-			registry.registrations[last] =  nil
+			registry.registrations[i] = registry.registrations[last]
+			registry.registrations[last] = nil
 			registry.registrations = registry.registrations[:last]
 			return
 		}
@@ -137,7 +137,7 @@ func (registry *Registry) Complete(level int) {
 }
 
 // Corrupt marks compaction for given level as corrupted. Corrupted compaction
-// doesn't contribute to concurrency, but it doest contribute to NextFileNumber.
+// doesn't contribute to concurrency, but it does contribute to NextFileNumber.
 func (registry *Registry) Corrupt(level int) {
 	registry.corrupts++
 }

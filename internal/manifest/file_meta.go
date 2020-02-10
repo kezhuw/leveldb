@@ -28,7 +28,7 @@ func (f *FileMeta) resetAllowedSeeks(compactionBytesCost int, minimalSeeks int) 
 	f.allowedOverlapSeeks = allowedOverlapSeeks
 }
 
-// seekOverlap consumes allowed seeks due to overlapp and returns whether
+// seekOverlap consumes allowed seeks due to overlap and returns whether
 // caller should compact this file.
 func (f *FileMeta) seekOverlap() bool {
 	return atomic.AddInt64(&f.allowedOverlapSeeks, -1) == 0
