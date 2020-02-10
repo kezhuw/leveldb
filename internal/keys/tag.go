@@ -45,7 +45,7 @@ func GetTag(buf []byte) Tag {
 	return Tag(endian.Uint64(buf))
 }
 
-// CombineTag combines sequenece and kind into buf. Length of buf must equal to
+// CombineTag combines sequence and kind into buf. Length of buf must equal to
 // or greater than TagBytes.
 func CombineTag(buf []byte, seq Sequence, kind Kind) {
 	PutTag(buf, PackTag(seq, kind))

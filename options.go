@@ -359,8 +359,8 @@ type WriteOptions struct {
 	// underlying storage before the write is considered complete.
 	// Setting Sync to true may result in slower writes.
 	//
-	// If Sync is false, and the machine crashs, some recent writes may
-	// be lost. Note that if it is just the process crashs, no writes will
+	// If Sync is false, and the machine crashes, some recent writes may
+	// be lost. Note that if it is just the process crashes, no writes will
 	// be lost.
 	//
 	// In other words, a write with false Sync has similar crash semantics
