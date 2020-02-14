@@ -33,9 +33,9 @@ func (ss *Snapshot) finalize() error {
 	return nil
 }
 
-// Dup creates a new snapshot from this one. The newly created
+// Snapshot creates a new snapshot from this one. The newly created
 // snapshot has independent lifetime as this one.
-func (ss *Snapshot) Dup() *Snapshot {
+func (ss *Snapshot) Snapshot() *Snapshot {
 	switch {
 	case ss.err != nil:
 		return &Snapshot{err: ss.err}
@@ -44,6 +44,14 @@ func (ss *Snapshot) Dup() *Snapshot {
 	}
 	ss.shared.Retain()
 	return newSnapshot(ss.shared)
+}
+
+// Dup creates a new snapshot from this one. The newly created
+// snapshot has independent lifetime as this one.
+//
+// Deprecated: Use Snapshot() instead.
+func (ss *Snapshot) Dup() *Snapshot {
+	return ss.Snapshot()
 }
 
 // Close releases any resources hold by this snapshot.
@@ -88,3 +96,4 @@ func (ss *Snapshot) Prefix(prefix []byte, opts *ReadOptions) Iterator {
 }
 
 var _ io.Closer = (*Snapshot)(nil)
+var _ Reader = (*Snapshot)(nil)
