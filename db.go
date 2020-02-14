@@ -1,6 +1,7 @@
 package leveldb
 
 import (
+	"io"
 	"runtime"
 
 	"github.com/kezhuw/leveldb/internal/errors"
@@ -11,6 +12,9 @@ import (
 type DB struct {
 	db *leveldb.DB
 }
+
+var _ Reader = (*DB)(nil)
+var _ io.Closer = (*DB)(nil)
 
 // Open opens a LevelDB database stored in directory 'dbname'.
 func Open(dbname string, opts *Options) (*DB, error) {
@@ -91,7 +95,19 @@ func (db *DB) Prefix(prefix []byte, opts *ReadOptions) Iterator {
 
 // GetSnapshot captures current state of db as a Snapshot. Following updates in
 // db will not affect the state of Snapshot.
+//
+// Deprecated: Use Snapshot() instead.
 func (db *DB) GetSnapshot() *Snapshot {
+	ss := db.db.NewSnapshot()
+	if ss == nil {
+		return &Snapshot{err: errors.ErrDBClosed}
+	}
+	return newSnapshot(ss)
+}
+
+// Snapshot captures current state of db as a Snapshot. Following updates in
+// db will not affect the state of returning Snapshot.
+func (db *DB) Snapshot() *Snapshot {
 	ss := db.db.NewSnapshot()
 	if ss == nil {
 		return &Snapshot{err: errors.ErrDBClosed}
