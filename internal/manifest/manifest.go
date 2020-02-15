@@ -9,7 +9,6 @@ import (
 	"unsafe"
 
 	"github.com/kezhuw/leveldb/internal/compaction"
-	"github.com/kezhuw/leveldb/internal/configs"
 	"github.com/kezhuw/leveldb/internal/errors"
 	"github.com/kezhuw/leveldb/internal/file"
 	"github.com/kezhuw/leveldb/internal/files"
@@ -164,7 +163,7 @@ func (m *Manifest) Log(tip *Version, edit *Edit) (*Version, error) {
 	}
 
 	switch {
-	case m.manifestLog.Offset() >= configs.TargetFileSize:
+	case m.manifestLog.Offset() >= m.options.MaxFileSize:
 		var snapshot Edit
 		next.snapshot(&snapshot)
 		snapshot.ComparatorName = m.options.Comparator.UserKeyComparator.Name()

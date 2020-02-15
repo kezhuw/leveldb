@@ -2,7 +2,6 @@ package manifest
 
 import (
 	"github.com/kezhuw/leveldb/internal/compaction"
-	"github.com/kezhuw/leveldb/internal/configs"
 	"github.com/kezhuw/leveldb/internal/iterator"
 	"github.com/kezhuw/leveldb/internal/keys"
 	"github.com/kezhuw/leveldb/internal/options"
@@ -41,5 +40,6 @@ func (c *Compaction) NewIterator() iterator.Iterator {
 }
 
 func (c *Compaction) IsTrivialMove() bool {
-	return len(c.Inputs[0]) == 1 && len(c.Inputs[1]) == 0 && c.Grandparents.TotalFileSize() < configs.MaxGrandparentOverlappingBytes
+	maxGrandparentOverlapBytes := uint64(c.Base.options.MaxGrandparentOverlapBytes)
+	return len(c.Inputs[0]) == 1 && len(c.Inputs[1]) == 0 && c.Grandparents.TotalFileSize() < maxGrandparentOverlapBytes
 }

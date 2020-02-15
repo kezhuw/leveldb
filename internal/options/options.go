@@ -9,6 +9,7 @@ import (
 )
 
 const (
+	DefaultMaxFileSize           = 2 * 1024 * 1024
 	DefaultBlockSize             = 4096
 	DefaultBlockRestartInterval  = 16
 	DefaultBlockCompressionRatio = 8.0 / 7.0
@@ -44,12 +45,24 @@ const (
 
 var DefaultInternalComparator keys.InternalComparator = keys.InternalComparator{UserKeyComparator: keys.BytewiseComparator}
 
+func MaxGrandparentOverlapBytes(maxFileSize int64) int64 {
+	return 10 * maxFileSize
+}
+
+func MaxExpandedCompactionBytes(maxFileSize int64) int64 {
+	return 25 * maxFileSize
+}
+
 type Options struct {
 	Comparator  *keys.InternalComparator
 	Compression compress.Type
 	Filter      filter.Filter
 	Logger      logger.LogCloser
 	FileSystem  file.FileSystem
+
+	MaxFileSize                int64
+	MaxGrandparentOverlapBytes int64
+	MaxExpandedCompactionBytes int64
 
 	BlockSize                   int
 	BlockRestartInterval        int
@@ -82,6 +95,9 @@ var DefaultOptions = Options{
 	Comparator:                  &DefaultInternalComparator,
 	Compression:                 compress.SnappyCompression,
 	FileSystem:                  file.DefaultFileSystem,
+	MaxFileSize:                 DefaultMaxFileSize,
+	MaxGrandparentOverlapBytes:  MaxGrandparentOverlapBytes(DefaultMaxFileSize),
+	MaxExpandedCompactionBytes:  MaxExpandedCompactionBytes(DefaultMaxFileSize),
 	BlockSize:                   DefaultBlockSize,
 	BlockRestartInterval:        DefaultBlockRestartInterval,
 	BlockCompressionRatio:       DefaultBlockCompressionRatio,

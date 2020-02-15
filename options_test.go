@@ -141,6 +141,9 @@ type optionsTest struct {
 	options                     *Options
 	comparator                  keys.Comparator
 	compression                 compress.Type
+	maxFileSize                 int64
+	maxGrandparentOverlapBytes  int64
+	maxExpandedCompactionBytes  int64
 	blockSize                   int
 	blockRestartInterval        int
 	blockCompressionRatio       float64
@@ -163,6 +166,9 @@ var optionsTests = []optionsTest{
 	{
 		comparator:                  keys.BytewiseComparator,
 		compression:                 compress.SnappyCompression,
+		maxFileSize:                 options.DefaultMaxFileSize,
+		maxGrandparentOverlapBytes:  options.MaxGrandparentOverlapBytes(options.DefaultMaxFileSize),
+		maxExpandedCompactionBytes:  options.MaxExpandedCompactionBytes(options.DefaultMaxFileSize),
 		blockSize:                   options.DefaultBlockSize,
 		blockRestartInterval:        options.DefaultBlockRestartInterval,
 		blockCompressionRatio:       options.DefaultBlockCompressionRatio,
@@ -180,12 +186,16 @@ var optionsTests = []optionsTest{
 	{
 		options: &Options{
 			Compression:           SnappyCompression,
+			MaxFileSize:           100 * options.DefaultMaxFileSize,
 			BlockCompressionRatio: 7.0 / 10.0,
 			CompactionConcurrency: MaxCompactionConcurrency,
 			Level0CompactionFiles: 10,
 		},
 		comparator:                  keys.BytewiseComparator,
 		compression:                 compress.SnappyCompression,
+		maxFileSize:                 100 * options.DefaultMaxFileSize,
+		maxGrandparentOverlapBytes:  options.MaxGrandparentOverlapBytes(100 * options.DefaultMaxFileSize),
+		maxExpandedCompactionBytes:  options.MaxExpandedCompactionBytes(100 * options.DefaultMaxFileSize),
 		blockSize:                   options.DefaultBlockSize,
 		blockRestartInterval:        options.DefaultBlockRestartInterval,
 		blockCompressionRatio:       options.DefaultBlockCompressionRatio,
@@ -204,6 +214,9 @@ var optionsTests = []optionsTest{
 		options: &Options{
 			Comparator:                  keys.BytewiseComparator,
 			Compression:                 NoCompression,
+			MaxFileSize:                 10 * options.DefaultMaxFileSize,
+			MaxGrandparentOverlapBytes:  100 * options.MaxGrandparentOverlapBytes(10*options.DefaultMaxFileSize),
+			MaxExpandedCompactionBytes:  200 * options.MaxExpandedCompactionBytes(10*options.DefaultMaxFileSize),
 			BlockSize:                   options.DefaultBlockSize * 4,
 			BlockRestartInterval:        options.DefaultBlockRestartInterval + 2,
 			BlockCompressionRatio:       10.0 / 7.0,
@@ -223,6 +236,9 @@ var optionsTests = []optionsTest{
 		},
 		comparator:                  keys.BytewiseComparator,
 		compression:                 compress.NoCompression,
+		maxFileSize:                 10 * options.DefaultMaxFileSize,
+		maxGrandparentOverlapBytes:  100 * options.MaxGrandparentOverlapBytes(10*options.DefaultMaxFileSize),
+		maxExpandedCompactionBytes:  200 * options.MaxExpandedCompactionBytes(10*options.DefaultMaxFileSize),
 		blockSize:                   options.DefaultBlockSize * 4,
 		blockRestartInterval:        options.DefaultBlockRestartInterval + 2,
 		blockCompressionRatio:       10.0 / 7.0,
@@ -253,6 +269,15 @@ func TestOptions(t *testing.T) {
 		}
 		if compression := opts.getCompression(); compression != test.compression {
 			t.Errorf("test=%d-Compression got=%v want=%v", i, compression, test.compression)
+		}
+		if maxFileSize := opts.getMaxFileSize(); maxFileSize != test.maxFileSize {
+			t.Errorf("test=%d-MaxFileSize got=%d want=%v", i, maxFileSize, test.maxFileSize)
+		}
+		if maxGrandparentOverlapBytes := opts.getMaxGrandparentOverlapBytes(); maxGrandparentOverlapBytes != test.maxGrandparentOverlapBytes {
+			t.Errorf("test=%d-MaxGrandparentOverlapBytes got=%d want=%v", i, maxGrandparentOverlapBytes, test.maxGrandparentOverlapBytes)
+		}
+		if maxExpandedCompactionBytes := opts.getMaxExpandedCompactionBytes(); maxExpandedCompactionBytes != test.maxExpandedCompactionBytes {
+			t.Errorf("test=%d-MaxExpandedCompactionBytes got=%d want=%v", i, maxExpandedCompactionBytes, test.maxExpandedCompactionBytes)
 		}
 		if blockSize := opts.getBlockSize(); blockSize != test.blockSize {
 			t.Errorf("test=%d-BlockSize got=%d want=%v", i, blockSize, test.blockSize)
@@ -313,6 +338,15 @@ func TestConvertOptions(t *testing.T) {
 		}
 		if compression := opts.Compression; compression != test.compression {
 			t.Errorf("test=%d-Compression got=%v want=%v", i, compression, test.compression)
+		}
+		if maxFileSize := opts.MaxFileSize; maxFileSize != test.maxFileSize {
+			t.Errorf("test=%d-MaxFileSize got=%d want=%v", i, maxFileSize, test.maxFileSize)
+		}
+		if maxGrandparentOverlapBytes := opts.MaxGrandparentOverlapBytes; maxGrandparentOverlapBytes != test.maxGrandparentOverlapBytes {
+			t.Errorf("test=%d-MaxGrandparentOverlapBytes got=%d want=%v", i, maxGrandparentOverlapBytes, test.maxGrandparentOverlapBytes)
+		}
+		if maxExpandedCompactionBytes := opts.MaxExpandedCompactionBytes; maxExpandedCompactionBytes != test.maxExpandedCompactionBytes {
+			t.Errorf("test=%d-MaxExpandedCompactionBytes got=%d want=%v", i, maxExpandedCompactionBytes, test.maxExpandedCompactionBytes)
 		}
 		if blockSize := opts.BlockSize; blockSize != test.blockSize {
 			t.Errorf("test=%d-BlockSize got=%d want=%v", i, blockSize, test.blockSize)

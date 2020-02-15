@@ -45,6 +45,23 @@ type Options struct {
 	// The default value points to SnappyCompression.
 	Compression CompressionType
 
+	// MaxFileSize enforces size limitation for files created by LevelDB.
+	//
+	// Defaults to 2MiB.
+	MaxFileSize int64
+
+	// MaxGrandparentOverlapBytes limits number of overlap bytes with level+2 a
+	// compacted file produced in compaction level => level+1 can have.
+	//
+	// Defaults to 10 * MaxFileSize.
+	MaxGrandparentOverlapBytes int64
+
+	// MaxExpandedCompactionBytes limits number of bytes of input files when expanding
+	// input files in compacting level.
+	//
+	// Defaults to 25 * MaxFileSize.
+	MaxExpandedCompactionBytes int64
+
 	// BlockSize specifies the minimum uncompressed size in bytes for a table block.
 	//
 	// The default value is 4KiB.
@@ -207,6 +224,27 @@ func (opts *Options) getCompression() compress.Type {
 	return options.DefaultCompression
 }
 
+func (opts *Options) getMaxFileSize() int64 {
+	if opts.MaxFileSize <= 0 {
+		return options.DefaultMaxFileSize
+	}
+	return opts.MaxFileSize
+}
+
+func (opts *Options) getMaxGrandparentOverlapBytes() int64 {
+	if opts.MaxGrandparentOverlapBytes <= 0 {
+		return options.MaxGrandparentOverlapBytes(opts.getMaxFileSize())
+	}
+	return opts.MaxGrandparentOverlapBytes
+}
+
+func (opts *Options) getMaxExpandedCompactionBytes() int64 {
+	if opts.MaxExpandedCompactionBytes <= 0 {
+		return options.MaxExpandedCompactionBytes(opts.getMaxFileSize())
+	}
+	return opts.MaxExpandedCompactionBytes
+}
+
 func (opts *Options) getBlockSize() int {
 	if opts.BlockSize <= 0 {
 		return options.DefaultBlockSize
@@ -309,6 +347,9 @@ func convertOptions(opts *Options) *options.Options {
 	var iopts options.Options
 	iopts.Comparator = opts.getComparator()
 	iopts.Compression = opts.getCompression()
+	iopts.MaxFileSize = opts.getMaxFileSize()
+	iopts.MaxGrandparentOverlapBytes = opts.getMaxGrandparentOverlapBytes()
+	iopts.MaxExpandedCompactionBytes = opts.getMaxExpandedCompactionBytes()
 	iopts.BlockSize = opts.getBlockSize()
 	iopts.BlockRestartInterval = opts.getBlockRestartInterval()
 	iopts.BlockCompressionRatio = opts.getBlockCompressionRatio()

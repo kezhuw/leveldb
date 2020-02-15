@@ -408,7 +408,7 @@ func (v *Version) expandLevelInputs(c *Compaction, smallest, largest *keys.Inter
 	}
 	inputs1Size := c.Inputs[1].TotalFileSize()
 	expandeds0Size := expandeds0.TotalFileSize()
-	if expandeds0Size+inputs1Size >= configs.ExpandedCompactionLimitBytes {
+	if expandeds0Size+inputs1Size >= uint64(v.options.MaxExpandedCompactionBytes) {
 		return
 	}
 	smallest0, largest0 = v.rangeOf(expandeds0)
@@ -431,7 +431,7 @@ func (v *Version) newLevelCompaction(registration *compaction.Registration, leve
 	if grandparentsLevel := c.Level + 2; grandparentsLevel < configs.NumberLevels {
 		c.Grandparents = v.appendOverlappingFiles(c.Grandparents[:0], grandparentsLevel, allSmallest, allLargest)
 	}
-	c.MaxOutputFileSize = configs.TargetFileSize
+	c.MaxOutputFileSize = v.options.MaxFileSize
 	c.NextCompactPointer = largest
 
 	return c
@@ -517,7 +517,7 @@ func (v *Version) PickLevelForMemTableOutput(smallest, largest []byte) int {
 		size.total = 0
 		v.overlapLeveln(&size, level+1, smallest, largest)
 		switch {
-		case size.total > configs.MaxGrandparentOverlappingBytes:
+		case size.total > v.options.MaxGrandparentOverlapBytes:
 			return level - 1
 		case size.total != 0:
 			return level
