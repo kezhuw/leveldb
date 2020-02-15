@@ -5,9 +5,3 @@ const (
 )
 
 const MaxMemTableCompactLevel = 2
-
-const (
-	TargetFileSize                 = 2 * 1024 * 1024
-	ExpandedCompactionLimitBytes   = 25 * TargetFileSize
-	MaxGrandparentOverlappingBytes = 10 * TargetFileSize
-)

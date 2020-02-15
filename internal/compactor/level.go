@@ -167,7 +167,7 @@ func (c *levelCompactor) shouldStopBefore(ikey []byte) bool {
 		c.grandparentsIndex++
 	}
 	c.grandparentsSeenKey = true
-	return c.grandparentsOverlappedBytes > configs.MaxGrandparentOverlappingBytes
+	return c.grandparentsOverlappedBytes > uint64(c.options.MaxGrandparentOverlapBytes)
 }
 
 func (c *levelCompactor) isBaseLevelForKey(ukey []byte) bool {
