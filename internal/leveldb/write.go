@@ -8,6 +8,7 @@ import (
 	"github.com/kezhuw/leveldb/internal/errors"
 	"github.com/kezhuw/leveldb/internal/file"
 	"github.com/kezhuw/leveldb/internal/files"
+	"github.com/kezhuw/leveldb/internal/manifest"
 	"github.com/kezhuw/leveldb/internal/memtable"
 	"github.com/kezhuw/leveldb/internal/record"
 	"github.com/kezhuw/leveldb/internal/request"
@@ -133,8 +134,8 @@ func (db *DB) slowdownLog(c <-chan time.Time) (chan request.Request, <-chan time
 	}
 }
 
-func (db *DB) throttleLog(slowdown <-chan time.Time) (chan request.Request, <-chan time.Time) {
-	level0NumFiles := len(db.manifest.Version().Levels[0])
+func (db *DB) throttleLog(version *manifest.Version, slowdown <-chan time.Time) (chan request.Request, <-chan time.Time) {
+	level0NumFiles := len(version.Levels[0])
 	switch {
 	case db.logErr != nil || db.compactionErr != nil || db.manifestErr != nil:
 		return db.requests, nil
@@ -198,20 +199,22 @@ func (db *DB) CompactRange(start, limit []byte) error {
 
 func (db *DB) serveWrite() {
 	defer db.bgGroup.Done()
-	compactionClosed := make(chan struct{})
 	go db.serveMerge()
-	go db.serveCompaction(compactionClosed)
+	compactionContext := newCompactionContext(db)
+	go compactionContext.serveCompaction()
 	var lastErr error
 	var requests chan request.Request
 	var slowdown <-chan time.Time
 	var pendingManualCompaction *manualCompaction
 	mem := db.bundle.mem
+	version := db.bundle.version
 	manualCompactionChan := db.manualCompactionChan
+	compactionVersionChan := compactionContext.CompactionVersionChan
 	// There may be too many files in level-0 to throttle writes, fire
 	// an level compaction to solve this.
 	db.tryLevelCompaction()
-	for db.requests != nil || db.nextLogNumber != 0 || compactionClosed != nil {
-		requests, slowdown = db.throttleLog(slowdown)
+	for db.requests != nil || db.nextLogNumber != 0 || compactionVersionChan != nil {
+		requests, slowdown = db.throttleLog(version, slowdown)
 		select {
 		case manualCompaction := <-manualCompactionChan:
 			if lastErr != nil {
@@ -230,8 +233,13 @@ func (db *DB) serveWrite() {
 			db.tryOpenNextLog()
 			pendingManualCompaction = manualCompaction
 			manualCompactionChan = nil
-		case <-compactionClosed:
-			compactionClosed = nil
+		case compactionVersion, ok := <-compactionVersionChan:
+			if !ok {
+				compactionVersionChan = nil
+				continue
+			}
+			version = compactionVersion.version
+			db.switchVersion(compactionVersion.level, version)
 		case logFile := <-db.nextLogFile:
 			if logFile == nil {
 				db.nextLogNumber = 0

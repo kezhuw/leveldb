@@ -72,10 +72,6 @@ type DB struct {
 	compactionFile        chan manifest.LevelFileMeta
 	compactionRequestChan chan *compactionRequest
 
-	memtableEdit     chan compactionEdit
-	compactionEdit   chan compactionEdit
-	compactionResult chan compactionResult
-
 	obsoleteFilesChan chan uint64
 }
 
@@ -386,9 +382,6 @@ func initDB(db *DB, name string, m *manifest.Manifest, locker io.Closer, opts *o
 	db.nextLogFileErr = make(chan error, 1)
 	db.manifestErrChan = make(chan error, 1)
 	db.compactionErrChan = make(chan error, 1)
-	db.memtableEdit = make(chan compactionEdit, 1)
-	db.compactionEdit = make(chan compactionEdit, configs.NumberLevels)
-	db.compactionResult = make(chan compactionResult, configs.NumberLevels)
 	db.compactionFile = make(chan manifest.LevelFileMeta, 128)
 	db.manualCompactionChan = make(chan *manualCompaction)
 	db.compactionRequestChan = make(chan *compactionRequest, 10)
