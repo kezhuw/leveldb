@@ -3,10 +3,8 @@ package manifest
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"sync"
 	"sync/atomic"
-	"unsafe"
 
 	"github.com/kezhuw/leveldb/internal/errors"
 	"github.com/kezhuw/leveldb/internal/file"
@@ -185,26 +183,30 @@ func (m *Manifest) Log(tip *Version, edit *Edit) (*Version, error) {
 	return next, nil
 }
 
-func (m *Manifest) mountVersion(v *Version) {
+func (m *Manifest) mountVersionFiles(v *Version) {
 	m.liveFilesMu.Lock()
 	defer m.liveFilesMu.Unlock()
 	v.refFiles(m.liveFiles)
-	runtime.SetFinalizer(v, (*Version).finalize)
 }
 
-func (m *Manifest) unmountVersion(v *Version) {
+func (m *Manifest) unmountVersionFiles(v *Version) {
 	m.liveFilesMu.Lock()
 	defer m.liveFilesMu.Unlock()
 	v.unrefFiles(m.liveFiles)
 }
 
 func (m *Manifest) Version() *Version {
-	return (*Version)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&m.version))))
+	return m.version
 }
 
 func (m *Manifest) Append(tip *Version) {
-	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&m.version)), unsafe.Pointer(tip))
+	m.version.Release()
 	m.mountVersion(tip)
+}
+
+func (m *Manifest) mountVersion(tip *Version) {
+	m.version = tip.Retain()
+	m.mountVersionFiles(tip)
 }
 
 func (m *Manifest) Apply(edit *Edit) error {
@@ -213,6 +215,11 @@ func (m *Manifest) Apply(edit *Edit) error {
 		return err
 	}
 	m.Append(next)
+	return nil
+}
+
+func (m *Manifest) Close() error {
+	m.version.Release()
 	return nil
 }
 
@@ -282,7 +289,7 @@ func Create(dbname string, opts *options.Options) (manifest *Manifest, err error
 		tableCache:     table.NewCache(dbname, opts),
 	}
 	version := &Version{options: opts, cache: manifest.tableCache, manifest: manifest}
-	manifest.Append(version)
+	manifest.mountVersion(version)
 	return manifest, nil
 }
 
@@ -333,7 +340,7 @@ func Recover(dbname string, opts *options.Options) (*Manifest, error) {
 	}
 	version.cache = manifest.tableCache
 	version.manifest = manifest
-	manifest.Append(version)
+	manifest.mountVersion(version)
 	manifest.MarkFileNumberUsed(manifest.logFileNumber)
 
 	return manifest, nil

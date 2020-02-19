@@ -32,7 +32,8 @@ type DB struct {
 	requests chan request.Request
 	requestw chan struct{}
 
-	bundle *bundle
+	bundle   *bundle
+	bundleMu sync.RWMutex
 
 	manifest *manifest.Manifest
 
@@ -285,7 +286,7 @@ func (db *DB) Close() error {
 
 	close(db.bgClosing)
 	db.bgGroup.Wait()
-	db.storeBundle(nil)
+	db.storeBundle(closedBundle)
 	if db.locker != nil {
 		db.locker.Close()
 		db.locker = nil
@@ -294,7 +295,7 @@ func (db *DB) Close() error {
 	db.options.Logger.Close()
 	close(db.manualCompactionChan)
 	close(db.compactionRequestChan)
-	return nil
+	return db.manifest.Close()
 }
 
 func (db *DB) Get(key []byte, opts *options.ReadOptions) ([]byte, error) {
@@ -303,9 +304,10 @@ func (db *DB) Get(key []byte, opts *options.ReadOptions) ([]byte, error) {
 
 func (db *DB) get(key []byte, seq keys.Sequence, opts *options.ReadOptions) ([]byte, error) {
 	bundle := db.loadBundle()
-	if bundle == nil {
+	if db.isClosedBundle(bundle) {
 		return nil, errors.ErrDBClosed
 	}
+	defer db.releaseBundle(bundle)
 	ikey := keys.NewInternalKey(key, seq, keys.Seek)
 	memtables := [2]*memtable.MemTable{bundle.mem, bundle.imm}
 	for _, mem := range memtables {
@@ -347,7 +349,7 @@ func (db *DB) prefix(prefix []byte, seq keys.Sequence, opts *options.ReadOptions
 
 func (db *DB) between(start, limit []byte, seq keys.Sequence, opts *options.ReadOptions) iterator.Iterator {
 	bundle := db.loadBundle()
-	if bundle == nil {
+	if db.isClosedBundle(bundle) {
 		return iterator.Error(errors.ErrDBClosed)
 	}
 	iters := make([]iterator.Iterator, 1, 16)
@@ -357,7 +359,7 @@ func (db *DB) between(start, limit []byte, seq keys.Sequence, opts *options.Read
 	}
 	iters = bundle.version.AppendIterators(iters, opts)
 	mergeIt := iterator.NewMergeIterator(db.options.Comparator, iters...)
-	dbIt := newDBIterator(db, bundle.version, seq, mergeIt)
+	dbIt := newDBIterator(db, bundle, seq, mergeIt)
 	ucmp := db.options.Comparator.UserKeyComparator
 	return iterator.NewRangeIterator(start, limit, ucmp, dbIt)
 }
@@ -374,7 +376,7 @@ func initDB(db *DB, name string, m *manifest.Manifest, locker io.Closer, opts *o
 	db.options = opts
 	db.closed = make(chan struct{})
 	db.bgClosing = make(chan struct{})
-	db.bundle = &bundle{version: m.Version()}
+	db.bundle = &bundle{version: m.Version().Retain(), refs: 1}
 	db.requestc = make(chan request.Request, 1024)
 	db.requests = make(chan request.Request)
 	db.requestw = make(chan struct{}, 1)

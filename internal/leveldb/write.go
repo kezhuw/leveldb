@@ -239,7 +239,7 @@ func (db *DB) serveWrite() {
 				continue
 			}
 			version = compactionVersion.version
-			db.switchVersion(compactionVersion.level, version)
+			db.switchBundleVersion(compactionVersion.level, version)
 		case logFile := <-db.nextLogFile:
 			if logFile == nil {
 				db.nextLogNumber = 0
@@ -247,7 +247,7 @@ func (db *DB) serveWrite() {
 			}
 			db.openLog(logFile, 0, db.nextLogNumber)
 			imm := mem
-			mem = db.switchMemTable(mem)
+			mem = db.switchBundleMemTable(mem)
 			switch {
 			case pendingManualCompaction != nil:
 				db.compactionRequestChan <- &compactionRequest{

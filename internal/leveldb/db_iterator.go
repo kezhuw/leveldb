@@ -7,15 +7,13 @@ import (
 	"github.com/kezhuw/leveldb/internal/errors"
 	"github.com/kezhuw/leveldb/internal/iterator"
 	"github.com/kezhuw/leveldb/internal/keys"
-	"github.com/kezhuw/leveldb/internal/manifest"
 	"github.com/kezhuw/leveldb/internal/util"
 )
 
 type dbIterator struct {
 	db *DB
-	// Keep it away from GC, this way level files iterator seeks in
-	// wouldn't got deleted due to umount from manifest.
-	base     *manifest.Version
+	// bundle holds table files.
+	bundle   *bundle
 	ucmp     keys.Comparator
 	sequence keys.Sequence
 
@@ -149,9 +147,10 @@ func (it *dbIterator) finalize() error {
 		return nil
 	}
 	it.status = iterator.Closed
+	it.db.releaseBundle(it.bundle)
 	it.db = nil
 	it.err = util.FirstError(it.err, it.iterator.Close())
-	it.base = nil
+	it.bundle = nil
 	it.iterator = nil
 	return it.Err()
 }
@@ -208,7 +207,7 @@ func (it *dbIterator) parseKey(ikey *keys.ParsedInternalKey) bool {
 	it.sampleBytes -= len(key) + len(it.iterator.Value())
 	for it.sampleBytes < 0 {
 		it.sampleBytes += it.randomSampleBytes()
-		seekOverlapFile := it.db.manifest.Version().SeekOverlap(key, nil)
+		seekOverlapFile := it.bundle.version.SeekOverlap(key, nil)
 		if seekOverlapFile.FileMeta != nil {
 			it.db.tryCompactFile(seekOverlapFile)
 		}
@@ -261,11 +260,11 @@ func (it *dbIterator) findPrevEntry() bool {
 	}
 }
 
-func newDBIterator(db *DB, base *manifest.Version, seq keys.Sequence, it iterator.Iterator) iterator.Iterator {
+func newDBIterator(db *DB, bundle *bundle, seq keys.Sequence, it iterator.Iterator) iterator.Iterator {
 	rnd := rand.New(rand.NewSource(rand.Int63()))
 	dbIt := &dbIterator{
 		db:       db,
-		base:     base,
+		bundle:   bundle,
 		ucmp:     db.options.Comparator.UserKeyComparator,
 		iterator: it,
 		sequence: seq,

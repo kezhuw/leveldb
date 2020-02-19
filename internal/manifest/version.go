@@ -3,6 +3,7 @@ package manifest
 import (
 	"fmt"
 	"sort"
+	"sync/atomic"
 
 	"github.com/kezhuw/leveldb/internal/compaction"
 	"github.com/kezhuw/leveldb/internal/configs"
@@ -37,6 +38,8 @@ type Version struct {
 	cache    *table.Cache
 	options  *options.Options
 	manifest *Manifest
+
+	refs int32
 
 	// Levels[0], sorted from newest to oldest;
 	// Levels[n], sorted from smallest to largest.
@@ -594,6 +597,13 @@ func (v *Version) unrefFiles(files map[uint64]int) {
 	}
 }
 
-func (v *Version) finalize() {
-	v.manifest.unmountVersion(v)
+func (v *Version) Retain() *Version {
+	atomic.AddInt32(&v.refs, 1)
+	return v
+}
+
+func (v *Version) Release() {
+	if atomic.AddInt32(&v.refs, -1) == 0 {
+		v.manifest.unmountVersionFiles(v)
+	}
 }
