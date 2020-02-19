@@ -8,7 +8,6 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/kezhuw/leveldb/internal/compaction"
 	"github.com/kezhuw/leveldb/internal/errors"
 	"github.com/kezhuw/leveldb/internal/file"
 	"github.com/kezhuw/leveldb/internal/files"
@@ -215,10 +214,6 @@ func (m *Manifest) Apply(edit *Edit) error {
 	}
 	m.Append(next)
 	return nil
-}
-
-func (m *Manifest) PickCompactions(registry *compaction.Registry, pendingFiles []FileList) []*Compaction {
-	return m.version.pickCompactions(registry, pendingFiles, m.NextFileNumber())
 }
 
 func Create(dbname string, opts *options.Options) (manifest *Manifest, err error) {

@@ -26,63 +26,9 @@ type compactionEdit struct {
 	*manifest.Edit
 }
 
-func (db *DB) tryCompactFile(file manifest.LevelFileMeta) {
-	select {
-	case db.compactionFile <- file:
-	default:
-	}
-}
-
-func (db *DB) tryLevelCompaction() {
-	select {
-	case db.compactionRequestChan <- &compactionRequest{}:
-	default:
-	}
-}
-
-func (db *DB) compact(request *compactionRequest, c compactor.Compactor, edit *manifest.Edit) {
-	level, err := c.Level(), c.Compact(edit)
-	if err != nil {
-		db.compactionResult <- compactionResult{level: level, request: request, err: err}
-		return
-	}
-	if level == -1 {
-		db.memtableEdit <- compactionEdit{level: level, request: request, Edit: edit}
-		return
-	}
-	db.compactionEdit <- compactionEdit{level: level, request: request, Edit: edit}
-}
-
-func (db *DB) startMemTableCompaction(request *compactionRequest, registry *compaction.Registry, mem *memtable.MemTable) bool {
-	registration := registry.Register(-1, 0)
-	if registration == nil {
-		return false
-	}
-	m := db.manifest
-	fileNumber, nextFileNumber := m.NewFileNumber()
-	fileName := files.TableFileName(db.name, fileNumber)
-	compactor := compactor.NewMemTableCompactor(fileNumber, fileName, db.getSmallestSnapshot(), mem, db.options)
-	edit := &manifest.Edit{
-		LogNumber:      db.logNumber,
-		NextFileNumber: nextFileNumber,
-	}
-	registration.NextFileNumber = fileNumber
-	go db.compact(request, compactor, edit)
-	return true
-}
-
-func (db *DB) startLevelCompactions(request *compactionRequest, compactions []*manifest.Compaction) {
-	if len(compactions) == 0 {
-		return
-	}
-	smallestSequence := db.getSmallestSnapshot()
-	for _, c := range compactions {
-		edit := &manifest.Edit{
-			NextFileNumber: c.Registration.NextFileNumber,
-		}
-		compactor := compactor.NewLevelCompactor(db.name, smallestSequence, c, db.manifest, db.options)
-		go db.compact(request, compactor, edit)
-	}
+type compactionVersion struct {
+	level   int
+	version *manifest.Version
 }
 
 type compactionRequest struct {
@@ -97,7 +43,16 @@ var fileCompactionRequest = &compactionRequest{}
 var levelCompactionRequest = &compactionRequest{}
 
 type compactionContext struct {
-	db *DB
+	db       *DB
+	manifest *manifest.Manifest
+
+	version             *manifest.Version
+	loggingManifestEdit *manifest.Edit
+
+	manifestLogChan       chan compactionEdit
+	compactionEditChan    chan compactionEdit
+	compactionResultChan  chan compactionResult
+	CompactionVersionChan chan compactionVersion
 
 	registry    compaction.Registry
 	compactions list.List
@@ -112,27 +67,82 @@ type compactionContext struct {
 }
 
 func newCompactionContext(db *DB) *compactionContext {
-	ctx := &compactionContext{db: db}
+	ctx := &compactionContext{
+		db:                    db,
+		manifest:              db.manifest,
+		version:               db.manifest.Version(),
+		manifestLogChan:       make(chan compactionEdit, 1),
+		compactionEditChan:    make(chan compactionEdit, configs.NumberLevels),
+		compactionResultChan:  make(chan compactionResult, configs.NumberLevels),
+		CompactionVersionChan: make(chan compactionVersion, configs.NumberLevels),
+	}
 	ctx.registry.Recap(db.options.CompactionConcurrency)
 	return ctx
 }
 
-func (ctx *compactionContext) startCompactionConcurrently(request *compactionRequest) bool {
+func (ctx *compactionContext) Close() error {
+	close(ctx.manifestLogChan)
+	close(ctx.CompactionVersionChan)
+	return nil
+}
+
+func (ctx *compactionContext) compact(request *compactionRequest, c compactor.Compactor, edit *manifest.Edit) {
+	level, err := c.Level(), c.Compact(edit)
+	if err != nil {
+		ctx.compactionResultChan <- compactionResult{level: level, request: request, err: err}
+		return
+	}
+	ctx.compactionEditChan <- compactionEdit{level: level, request: request, Edit: edit}
+}
+
+func (ctx *compactionContext) startMemTableCompaction(request *compactionRequest, mem *memtable.MemTable) bool {
 	db := ctx.db
+	registration := ctx.registry.Register(-1, 0)
+	if registration == nil {
+		return false
+	}
+	fileNumber, nextFileNumber := ctx.manifest.NewFileNumber()
+	fileName := files.TableFileName(db.name, fileNumber)
+	compactor := compactor.NewMemTableCompactor(fileNumber, fileName, db.getSmallestSnapshot(), mem, db.options)
+	edit := &manifest.Edit{
+		LogNumber:      db.logNumber,
+		NextFileNumber: nextFileNumber,
+	}
+	registration.NextFileNumber = fileNumber
+	go ctx.compact(request, compactor, edit)
+	return true
+}
+
+func (ctx *compactionContext) startLevelCompactions(request *compactionRequest, compactions []*manifest.Compaction) {
+	if len(compactions) == 0 {
+		return
+	}
+	db := ctx.db
+	smallestSequence := db.getSmallestSnapshot()
+	for _, c := range compactions {
+		edit := &manifest.Edit{
+			NextFileNumber: c.Registration.NextFileNumber,
+		}
+		compactor := compactor.NewLevelCompactor(db.name, smallestSequence, c, db.manifest, db.options)
+		go ctx.compact(request, compactor, edit)
+	}
+}
+
+func (ctx *compactionContext) startCompactionConcurrently(request *compactionRequest) bool {
 	switch {
 	case request.Manual:
 		switch {
 		case request.MemTable != nil:
-			db.startMemTableCompaction(request, &ctx.registry, request.MemTable)
-		case !ctx.startRangeCompaction(0, request, db.manifest.Version()):
+			ctx.startMemTableCompaction(request, request.MemTable)
+		case !ctx.startRangeCompaction(0, request):
 			return true
 		}
 		return false
 	case request.MemTable != nil:
-		return db.startMemTableCompaction(request, &ctx.registry, request.MemTable)
+		return ctx.startMemTableCompaction(request, request.MemTable)
 	default:
-		compactions := db.manifest.PickCompactions(&ctx.registry, ctx.pendingCompactionFiles[:])
-		db.startLevelCompactions(request, compactions)
+		compactions := ctx.version.PickCompactions(&ctx.registry, ctx.pendingCompactionFiles[:], ctx.manifest.NextFileNumber())
+		ctx.startLevelCompactions(request, compactions)
 		return true
 	}
 }
@@ -178,7 +188,8 @@ func (ctx *compactionContext) AddCompactionFile(level int, file *manifest.FileMe
 	ctx.tryCompaction(fileCompactionRequest)
 }
 
-func (ctx *compactionContext) startRangeCompaction(level int, request *compactionRequest, version *manifest.Version) bool {
+func (ctx *compactionContext) startRangeCompaction(level int, request *compactionRequest) bool {
+	version := ctx.version
 	fromLevel := version.NextOverlapingLevel(level, request.Start, request.Limit)
 	if fromLevel < 0 {
 		return false
@@ -188,17 +199,18 @@ func (ctx *compactionContext) startRangeCompaction(level int, request *compactio
 		return false
 	}
 	c := version.PickRangeCompaction(&ctx.registry, fromLevel, request.Start, request.Limit)
-	ctx.db.startLevelCompactions(request, []*manifest.Compaction{c})
+	ctx.startLevelCompactions(request, []*manifest.Compaction{c})
 	return true
 }
 
 func (ctx *compactionContext) handleSuccessfulCompaction(level int, request *compactionRequest, version *manifest.Version) {
-	db := ctx.db
-	db.switchVersion(level, version)
+	ctx.version = version
+	ctx.manifest.Append(version)
 	ctx.registry.Complete(level)
+	ctx.CompactionVersionChan <- compactionVersion{level: level, version: version}
 	ctx.UpdateObsoleteFiles(ctx.registry.NextFileNumber(0))
 	if request.Manual {
-		if ctx.startRangeCompaction(level+1, request, version) {
+		if ctx.startRangeCompaction(level+1, request) {
 			return
 		}
 		ctx.compactions.Remove(ctx.compactions.Front())
@@ -249,7 +261,29 @@ func (ctx *compactionContext) purgePendingCompactions(err error) {
 	}
 }
 
+func (ctx *compactionContext) AddCompactionEdit(edit compactionEdit) {
+	if edit.level == -1 {
+		output := edit.AddedFiles[0].FileMeta
+		maxLevel := ctx.version.PickLevelForMemTableOutput(output.Smallest, output.Largest)
+		if maxLevel > 0 {
+			edit.AddedFiles[0].Level = ctx.registry.ExpandTo(-1, maxLevel)
+		}
+	}
+	ctx.manifestLogChan <- edit
+	ctx.loggingManifestEdit = edit.Edit
+}
+
+func (ctx *compactionContext) NextCompactionEditChan() chan compactionEdit {
+	if ctx.loggingManifestEdit != nil {
+		return nil
+	}
+	return ctx.compactionEditChan
+}
+
 func (ctx *compactionContext) CompleteCompaction(result *compactionResult) {
+	if ctx.loggingManifestEdit == result.edit {
+		ctx.loggingManifestEdit = nil
+	}
 	switch {
 	case result.err == nil:
 		ctx.handleSuccessfulCompaction(result.level, result.request, result.version)
@@ -272,12 +306,11 @@ func (ctx *compactionContext) RemoveObsoleteFiles() {
 	}
 }
 
-func (db *DB) serveCompaction(done chan struct{}) {
-	go db.serveVersionEdit(db.manifest.Version())
-	defer close(done)
-	defer close(db.compactionEdit)
+func (ctx *compactionContext) serveCompaction() {
+	db := ctx.db
 	closing := db.bgClosing
-	ctx := newCompactionContext(db)
+	defer ctx.Close()
+	go ctx.serveManifestLog()
 	db.removeObsoleteFilesAsync(0)
 	for !(closing == nil && ctx.registry.Concurrency() == 0 && ctx.ongoingObsoleteFiles == nil && ctx.pendingObsoleteFiles == 0) {
 		select {
@@ -287,18 +320,13 @@ func (db *DB) serveCompaction(done chan struct{}) {
 			ctx.ongoingObsoleteFiles = nil
 		case <-closing:
 			closing = nil
-		case edit := <-db.memtableEdit:
-			output := edit.AddedFiles[0].FileMeta
-			maxLevel := db.manifest.Version().PickLevelForMemTableOutput(output.Smallest, output.Largest)
-			if maxLevel > 0 {
-				edit.AddedFiles[0].Level = ctx.registry.ExpandTo(-1, maxLevel)
-			}
-			db.compactionEdit <- edit
+		case edit := <-ctx.NextCompactionEditChan():
+			ctx.AddCompactionEdit(edit)
 		case request := <-db.compactionRequestChan:
 			ctx.AddCompaction(request)
 		case file := <-db.compactionFile:
 			ctx.AddCompactionFile(file.Level, file.FileMeta)
-		case result := <-db.compactionResult:
+		case result := <-ctx.compactionResultChan:
 			ctx.CompleteCompaction(&result)
 		}
 		ctx.RemoveObsoleteFiles()
@@ -306,21 +334,39 @@ func (db *DB) serveCompaction(done chan struct{}) {
 	ctx.purgePendingCompactions(errors.ErrDBClosed)
 }
 
-func (db *DB) serveVersionEdit(tip *manifest.Version) {
+func (ctx *compactionContext) serveManifestLog() {
+	m := ctx.manifest
+	tip := ctx.version
+	editChan := ctx.manifestLogChan
+	resultChan := ctx.compactionResultChan
 	var lastErr error
-	for edit := range db.compactionEdit {
-		next, err := db.manifest.Log(tip, edit.Edit)
+	for edit := range editChan {
+		next, err := m.Log(tip, edit.Edit)
 		if err != nil {
 			lastErr = err
-			db.compactionResult <- compactionResult{err: err, level: edit.level, request: edit.request, version: tip}
+			resultChan <- compactionResult{err: err, level: edit.level, request: edit.request, edit: edit.Edit, version: tip}
 			break
 		}
 		tip = next
-		db.compactionResult <- compactionResult{level: edit.level, request: edit.request, version: tip}
+		resultChan <- compactionResult{level: edit.level, request: edit.request, edit: edit.Edit, version: tip}
 	}
 	if lastErr != nil {
-		for edit := range db.compactionEdit {
-			db.compactionResult <- compactionResult{err: lastErr, level: edit.level, request: edit.request, version: tip}
+		for edit := range editChan {
+			resultChan <- compactionResult{err: lastErr, level: edit.level, request: edit.request, edit: edit.Edit, version: tip}
 		}
+	}
+}
+
+func (db *DB) tryCompactFile(file manifest.LevelFileMeta) {
+	select {
+	case db.compactionFile <- file:
+	default:
+	}
+}
+
+func (db *DB) tryLevelCompaction() {
+	select {
+	case db.compactionRequestChan <- &compactionRequest{}:
+	default:
 	}
 }

@@ -480,7 +480,7 @@ func (v *Version) appendFileCompactions(compactions []*Compaction, registry *com
 	return compactions
 }
 
-func (v *Version) pickCompactions(registry *compaction.Registry, pendingFiles []FileList, nextFileNumber uint64) []*Compaction {
+func (v *Version) PickCompactions(registry *compaction.Registry, pendingFiles []FileList, nextFileNumber uint64) []*Compaction {
 	var compactions []*Compaction
 	compactions = v.appendScoreCompactions(compactions, registry, nextFileNumber)
 	compactions = v.appendFileCompactions(compactions, registry, pendingFiles, nextFileNumber)
