@@ -45,7 +45,7 @@ type LevelCompactPointer struct {
 }
 
 // Edit records a sequence changes made to a version. New version can
-// be constructed from old version and an Edit which records changs made
+// be constructed from old version and an Edit which records changes made
 // to that version.
 type Edit struct {
 	ComparatorName  string

@@ -207,7 +207,7 @@ func (ctx *compactionContext) handleSuccessfulCompaction(level int, request *com
 	ctx.version = version
 	ctx.manifest.Append(version)
 	ctx.registry.Complete(level)
-	ctx.CompactionVersionChan <- compactionVersion{level: level, version: version}
+	ctx.CompactionVersionChan <- compactionVersion{level: level, version: version.Retain()}
 	ctx.UpdateObsoleteFiles(ctx.registry.NextFileNumber(0))
 	if request.Manual {
 		if ctx.startRangeCompaction(level+1, request) {

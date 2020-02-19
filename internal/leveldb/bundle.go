@@ -2,7 +2,6 @@ package leveldb
 
 import (
 	"sync/atomic"
-	"unsafe"
 
 	"github.com/kezhuw/leveldb/internal/manifest"
 	"github.com/kezhuw/leveldb/internal/memtable"
@@ -12,53 +11,59 @@ type bundle struct {
 	mem     *memtable.MemTable
 	imm     *memtable.MemTable
 	version *manifest.Version
+	refs    int32
+}
+
+var closedBundle = &bundle{}
+
+func (db *DB) releaseBundle(b *bundle) {
+	if atomic.AddInt32(&b.refs, -1) == 0 {
+		b.version.Release()
+	}
+}
+
+func (db *DB) isClosedBundle(b *bundle) bool {
+	return b == closedBundle
 }
 
 func (db *DB) loadBundle() *bundle {
-	return (*bundle)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&db.bundle))))
+	db.bundleMu.RLock()
+	b := db.bundle
+	atomic.AddInt32(&b.refs, 1)
+	db.bundleMu.RUnlock()
+	return b
 }
 
-func (db *DB) swapBundle(old, new *bundle) bool {
-	return atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&db.bundle)), unsafe.Pointer(old), unsafe.Pointer(new))
+func (db *DB) storeBundle(newBundle *bundle) {
+	db.bundleMu.Lock()
+	oldBundle := db.bundle
+	db.bundle = newBundle
+	db.bundleMu.Unlock()
+	db.releaseBundle(oldBundle)
 }
 
-func (db *DB) storeBundle(new *bundle) {
-	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&db.bundle)), unsafe.Pointer(new))
-}
-
-func (db *DB) switchMemTable(mem *memtable.MemTable) *memtable.MemTable {
+func (db *DB) switchBundleMemTable(mem *memtable.MemTable) *memtable.MemTable {
 	imm := mem
 	mem = memtable.New(db.options.Comparator)
-	old := db.loadBundle()
-	new := &bundle{
+	newBundle := &bundle{
 		mem:     mem,
 		imm:     imm,
-		version: old.version,
+		version: db.bundle.version,
+		refs:    1,
 	}
-	for !db.swapBundle(old, new) {
-		old = db.loadBundle()
-		// Use version from compaction goroutine.
-		new.version = old.version
-	}
+	db.storeBundle(newBundle)
 	return mem
 }
 
-func (db *DB) switchVersion(level int, version *manifest.Version) {
-	defer db.wakeupWrite(level)
-	db.manifest.Append(version)
-	old := db.loadBundle()
-	new := &bundle{
-		mem:     old.mem,
-		imm:     old.imm,
+func (db *DB) switchBundleVersion(level int, version *manifest.Version) {
+	newBundle := &bundle{
+		mem:     db.bundle.mem,
+		imm:     db.bundle.imm,
 		version: version,
+		refs:    1,
 	}
 	if level == -1 {
-		new.imm = nil
+		newBundle.imm = nil
 	}
-	for !db.swapBundle(old, new) {
-		old = db.loadBundle()
-		// Use memtables from write goroutine.
-		new.mem = old.mem
-		new.imm = old.imm
-	}
+	db.storeBundle(newBundle)
 }
