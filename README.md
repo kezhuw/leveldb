@@ -147,7 +147,7 @@ See [kezhuw/go-leveldb-benchmarks][go-leveldb-benchmarks].
 - [ ] Tests [WIP]
 - [ ] Logging
 - [ ] Abstract cache interface, so we can share cache among multiple LevelDB instances
-- [ ] Reference counting openning file collection, don't rely on GC
+- [x] Reference counting openning file collection, don't rely on GC
 - [ ] Statistics
 - [x] Benchmarks, See [kezhuw/go-leveldb-benchmarks][go-leveldb-benchmarks].
 - [x] Concurrent level compaction

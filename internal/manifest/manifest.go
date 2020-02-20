@@ -13,6 +13,7 @@ import (
 	"github.com/kezhuw/leveldb/internal/options"
 	"github.com/kezhuw/leveldb/internal/record"
 	"github.com/kezhuw/leveldb/internal/table"
+	"github.com/kezhuw/leveldb/internal/util"
 )
 
 type Manifest struct {
@@ -220,7 +221,7 @@ func (m *Manifest) Apply(edit *Edit) error {
 
 func (m *Manifest) Close() error {
 	m.version.Release()
-	return nil
+	return util.FirstError(m.manifestFile.Close(), m.tableCache.Close())
 }
 
 func Create(dbname string, opts *options.Options) (manifest *Manifest, err error) {
