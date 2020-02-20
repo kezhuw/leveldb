@@ -590,6 +590,7 @@ func (v *Version) unrefFiles(files map[uint64]int) {
 			refs := files[f.Number] - 1
 			if refs <= 0 {
 				delete(files, f.Number)
+				v.cache.Evict(f.Number)
 				continue
 			}
 			files[f.Number] = refs

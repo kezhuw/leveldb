@@ -98,6 +98,11 @@ func (t *Table) readBlockIterator(handle []byte, opts *options.ReadOptions) iter
 	return t.readBlockHandleIterator(h, opts)
 }
 
+func (t *Table) Close() error {
+	t.blocks.Evict(t.fileNumber)
+	return t.f.Close()
+}
+
 func (t *Table) NewIterator(opts *options.ReadOptions) iterator.Iterator {
 	index := t.dataIndex.NewIterator(t.options.Comparator)
 	blockf := func(value []byte) iterator.Iterator {
