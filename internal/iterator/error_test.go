@@ -2,16 +2,17 @@ package iterator_test
 
 import (
 	"errors"
+	"testing"
+
 	"github.com/kezhuw/leveldb/internal/iterator"
 	"github.com/stretchr/testify/suite"
-	"testing"
 )
 
 type ErrorIteratorTestSuite struct {
-	err error
+	err     error
 	perTest bool
 
-	it iterator.Iterator
+	it         iterator.Iterator
 	panicValue string
 
 	suite.Suite
